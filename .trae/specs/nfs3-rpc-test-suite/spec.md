@@ -16,9 +16,9 @@
 
 - **目标系统**: 任意NFSv3服务器实现（用户空间或内核态）
 - **测试层次**: RPC协议层 + NFSv3操作语义层
-- **通信方式**: TCP/UDP直连服务器2049端口（无需mount/portmap）
+- **通信方式**: **TCP直连**服务器2049端口（无需mount/portmap，UDP作为未来扩展）
 - **语言标准**: C++17（利用std::optional, std::variant, std::string_view等现代特性）
-- **构建工具**: CMake ≥ 3.10
+- **构建工具**: CMake ≥ 2.8（兼容老旧系统）
 
 ## 技术选型与依赖策略
 
@@ -27,7 +27,7 @@
 | 决策项 | 选择 | 理由 |
 |--------|------|------|
 | **编程语言** | C++17 | 类型安全、RAII资源管理、STL容器简化代码 |
-| **构建系统** | CMake | 跨平台、现代IDE集成良好、依赖管理便捷 |
+| **构建系统** | **CMake ≥ 2.8** | 兼容老旧Linux发行版，广泛可用 |
 | **RPC运行时** | libtirpc | 唯一外部依赖，提供socket级RPC API |
 | **XDR编解码** | **手写实现** ❌ 不使用rpcgen | 零生成工具依赖，完全可控，C++类型安全 |
 | **加密认证** | ❌ 不使用OpenSSL | 仅测试AUTH_NONE/AUTH_UNIX，不涉及RPCSEC_GSS |
@@ -38,7 +38,7 @@
 ```
 必需依赖（运行时）:
 ├── g++              ≥ 7.0   (C++17支持)
-├── cmake            ≥ 3.10  (构建系统)
+├── cmake            ≥ 2.8   (构建系统，兼容老旧发行版)
 └── libtirpc-dev             (唯一外部库: RPC/XDR运行时)
 
 可选依赖（开发/测试）:
@@ -84,7 +84,7 @@
 │  │ GTest集成     │            ▼                    │
 │  │ (断言/Fixture)│  ┌─────────────────────┐      │
 │  └───────────────┘  │ RPCEndpoint          │      │
-│                     │ (底层TCP/UDP收发)    │      │
+│                     │ (底层TCP收发)        │      │
 │                     └──────────┬──────────┘      │
 ├────────────────────────────────┼───────────────────┤
 │              协议层 (Protocol Layer - 手写XDR)      │
@@ -94,8 +94,9 @@
 │  └────────────────┘  └────────────────────────┘     │
 ├─────────────────────────────────────────────────────┤
 │                  传输层 (Transport)                  │
-│            TCP Socket / UDP Socket                  │
-│            (通过libtirpc的clnt_create)              │
+│                    TCP Socket                       │
+│              (通过libtirpc的clnt_create)             │
+│              [未来扩展: UDP支持]                     │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -103,7 +104,7 @@
 
 | 组件 | 文件 | 语言 | 职责 |
 |------|------|------|------|
-| **RPCEndpoint** | `rpc_endpoint.hpp/cpp` | C++ | 封装libtirpc CLIENT句柄，管理连接生命周期 |
+| **RPCEndpoint** | `rpc_endpoint.hpp/cpp` | C++ | 封装libtirpc CLIENT句柄，管理TCP连接生命周期 |
 | **NFS3TestClient** | `nfs3_client.hpp/cpp` | C++ | 封装所有22个NFSv3过程调用API（类型安全） |
 | **TestContext** | `test_context.hpp/cpp` | C++ | 管理测试生命周期（GTest Fixture封装） |
 | **XDR Codec** | `xdr_codec.hpp/cpp` | C++ | 模板化的XDR编解码器（替代rpcgen生成代码） |
@@ -210,11 +211,11 @@ nfs3_rpc_tests/
 
 ### Requirement: RPC连接管理
 
-系统 SHALL 提供可靠的RPC连接管理能力，底层基于libtirpc。
+系统 SHALL 提供可靠的TCP连接管理能力，底层基于libtirpc。
 
 #### Scenario: 建立TCP连接到NFS服务器
 - **GIVEN** 一个运行中的NFSv3服务器（地址:port）
-- **WHEN** 调用 `RPCEndpoint::create("tcp", "192.168.1.100", 2049)`
+- **WHEN** 调用 `RPCEndpoint::create("192.168.1.100", 2049)`
 - **THEN** 成功建立TCP连接并返回RPCEndpoint对象
 - **AND** 连接内部持有有效的libtirpc CLIENT*
 
@@ -510,10 +511,10 @@ struct fattr3 {
 } // namespace nfs3
 ```
 
-### RPCEndpoint 设计（基于libtirpc）
+### RPCEndpoint 设计（基于libtirpc，TCP专用）
 
 ```cpp
-// rpc_endpoint.hpp - PIMPL模式隐藏libtirpc细节
+// rpc_endpoint.hpp - PIMPL模式隐藏libtirpc细节（仅支持TCP）
 namespace nfs3 {
 
 class RPCEndpointImpl;  // 前向声明实现类
@@ -522,7 +523,6 @@ class RPCEndpoint {
     std::unique_ptr<RPCEndpointImpl> impl_;
 public:
     static RPCEndpoint create(
-        const std::string& proto,  // "tcp" or "udp"
         const std::string& host,
         uint16_t port = 2049,
         std::chrono::milliseconds timeout = std::chrono::seconds(25)
@@ -597,25 +597,24 @@ public:
 } // namespace nfs3
 ```
 
-### CMake 构建系统设计
+### CMake 构建系统设计（CMake 2.8兼容）
 
 ```cmake
-# CMakeLists.txt (顶层)
-cmake_minimum_required(VERSION 3.10)
+# CMakeLists.txt (顶层) - 兼容CMake 2.8+
+cmake_minimum_required(VERSION 2.8)
 project(nfs3_rpc_tests VERSION 1.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# C++17标准 (CMake 2.8兼容写法)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -Wextra -Wpedantic")
 
-# 编译选项
-add_compile_options(
-    -Wall -Wextra -Wpedantic
-    $<$<CONFIG:Debug>:-g -O0 -DDEBUG>
-    $<$<CONFIG:Release>:-O2 -DNDEBUG>
-)
+# Debug/Release配置
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -DDEBUG")
+else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -DNDEBUG")
+endif()
 
-# 查找依赖
+# 查找libtirpc依赖
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBTIRPC REQUIRED libtirpc)
 
@@ -640,7 +639,7 @@ add_library(nfs3_test_core STATIC
     src/detail/xdr_primitive.cpp
 )
 
-target_include_directories(nfs3_test_core PUBLIC
+include_directories(nfs3_test_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${LIBTIRPC_INCLUDE_DIRS}
 )
@@ -648,7 +647,6 @@ target_link_libraries(nfs3_test_core PUBLIC
     ${LIBTIRPC_LIBRARIES}
     pthread
 )
-target_compile_features(nfs3_test_core PUBLIC cxx_std_17)
 
 # 测试可执行文件
 if(BUILD_TESTS AND TARGET GTest::gtest)
