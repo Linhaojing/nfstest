@@ -20,3 +20,6 @@ target_link_libraries(test_nfs3_suite PRIVATE
 
 include(GoogleTest)
 gtest_discover_tests(test_nfs3_suite)
+
+add_executable(test_xdr test_xdr.cpp)
+target_link_libraries(test_xdr PRIVATE nfs3_test_core)
