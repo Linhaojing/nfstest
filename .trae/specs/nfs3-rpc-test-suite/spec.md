@@ -2,90 +2,234 @@
 
 ## Why
 
-当前缺乏一套直接针对NFSv3服务器RPC接口的C/C++测试框架。现有的cthon-nfs-tests通过POSIX系统调用间接测试（无法精确控制RPC字段），而Vaiz/nfs3虽提供参考但使用Rust实现且覆盖不全面。本规范旨在设计一套**直接构造和发送RPC包**的NFSv3接口测试套件，用于验证服务器对RFC 1813协议的合规性、错误处理能力和边界条件处理。
+当前缺乏一套直接针对NFSv3服务器RPC接口的C++测试框架。现有的cthon-nfs-tests通过POSIX系统调用间接测试（无法精确控制RPC字段），而Vaiz/nfs3虽提供参考但使用Rust实现且覆盖不全面。本规范旨在设计一套**直接构造和发送RPC包**的NFSv3接口测试套件，用于验证服务器对RFC 1813协议的合规性、错误处理能力和边界条件处理。
 
 ## What Changes
 
-- 创建一套C/C++实现的NFSv3 RPC测试框架
+- 创建一套**C++17**实现的NFSv3 RPC测试框架
 - 直接在RPC层面构造请求/验证响应（绕过内核NFS客户端）
 - 覆盖NFSv3全部22个RPC过程的正常路径、错误路径和边界条件
 - 提供可扩展的测试基础设施（连接管理、XDR编解码、断言宏）
+- **采用最小依赖原则**：仅依赖 libtirpc（运行时RPC库）
 
 ## Impact
 
 - **目标系统**: 任意NFSv3服务器实现（用户空间或内核态）
 - **测试层次**: RPC协议层 + NFSv3操作语义层
 - **通信方式**: TCP/UDP直连服务器2049端口（无需mount/portmap）
-- **依赖库**: libtirpc（XDR/RPC运行时）
+- **语言标准**: C++17（利用std::optional, std::variant, std::string_view等现代特性）
+- **构建工具**: CMake ≥ 3.10
+
+## 技术选型与依赖策略
+
+### 核心原则：最小依赖
+
+| 决策项 | 选择 | 理由 |
+|--------|------|------|
+| **编程语言** | C++17 | 类型安全、RAII资源管理、STL容器简化代码 |
+| **构建系统** | CMake | 跨平台、现代IDE集成良好、依赖管理便捷 |
+| **RPC运行时** | libtirpc | 唯一外部依赖，提供socket级RPC API |
+| **XDR编解码** | **手写实现** ❌ 不使用rpcgen | 零生成工具依赖，完全可控，C++类型安全 |
+| **加密认证** | ❌ 不使用OpenSSL | 仅测试AUTH_NONE/AUTH_UNIX，不涉及RPCSEC_GSS |
+| **测试框架** | Google Test (gtest) | 工业标准，断言丰富，CI友好（可选但推荐） |
+
+### 全量依赖清单
+
+```
+必需依赖（运行时）:
+├── g++              ≥ 7.0   (C++17支持)
+├── cmake            ≥ 3.10  (构建系统)
+└── libtirpc-dev             (唯一外部库: RPC/XDR运行时)
+
+可选依赖（开发/测试）:
+└── libgtest-dev             (Google Test单元测试框架)
+
+总计: 3个必需包 + 1个可选包
+对比使用rpcgen方案: 减少1个包(rpcsvc-proto)，消除代码生成步骤
+```
+
+### 为什么手写XDR而不使用rpcgen？
+
+| 维度 | rpcgen生成 | 手写C++实现 |
+|------|-----------|------------|
+| **依赖** | 需要rpcgen工具+协议定义文件(.x) | ✅ 零额外依赖 |
+| **类型安全** | C风格void*，容易出错 | ✅ 强类型，编译期检查 |
+| **内存管理** | 手动malloc/free | ✅ RAII自动管理 |
+| **可读性** | K&R C风格，晦涩 | ✅ 现代C++，自文档化 |
+| **调试性** | 宏展开难以调试 | ✅ 模板代码可直接单步调试 |
+| **定制性** | 固定模式，难扩展 | ✅ 可添加自定义序列化逻辑 |
+| **维护成本** | 需要维护.x文件和生成脚本 | ✅ 单一源码 truth |
+
+**结论**: 对于本项目（仅客户端、固定协议版本），手写XDR的工作量可控且长期收益更高。
+
+---
 
 ## 架构设计
 
 ### 分层架构
 
 ```
-┌─────────────────────────────────────────────┐
-│              测试用例层 (Test Cases)          │
-│  rpc_null_test.c   nfs3_readwrite_test.c    │
-│  rpc_error_test.c  nfs3_lookup_test.c       │
-│  ...                                        │
-├─────────────────────────────────────────────┤
-│              测试框架层 (Test Framework)      │
-│  ┌─────────────┐  ┌──────────────────────┐  │
-│  │ TestContext │  │  NFS3TestClient      │  │
-│  │ (生命周期)  │  │  (高级API封装)       │  │
-│  └─────────────┘  └──────────┬───────────┘  │
-│  ┌─────────────┐           │               │
-│  │ Assert Macros│          ▼               │
-│  │ (断言宏)    │  ┌───────────────────┐    │
-│  └─────────────┘  │ RPCEndpoint       │    │
-│                   │ (底层RPC收发)     │    │
-│                   └─────────┬─────────┘    │
-├─────────────────────────────┼───────────────┤
-│              协议层 (Protocol Layer)        │
-│  ┌────────────┐  ┌────────┴────────┐       │
-│  │ XDR Codec  │  │ RFC 1813 Types  │       │
-│  │ (编解码)   │  │ (NFS3数据结构)  │       │
-│  └────────────┘  └─────────────────┘       │
-├─────────────────────────────────────────────┤
-│              传输层 (Transport)             │
-│         TCP Socket / UDP Socket            │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│                测试用例层 (Test Cases)               │
+│  test_rpc_null.cpp    test_nfs3_readwrite.cpp       │
+│  test_rpc_errors.cpp  test_nfs3_lookup.cpp          │
+│  ...                                               │
+├─────────────────────────────────────────────────────┤
+│                测试框架层 (Test Framework)           │
+│  ┌───────────────┐  ┌──────────────────────────┐   │
+│  │ TestContext   │  │  NFS3TestClient          │   │
+│  │ (生命周期)     │  │  (高级API封装)            │   │
+│  └───────────────┘  └──────────┬───────────────┘   │
+│  ┌───────────────┐            │                    │
+│  │ GTest集成     │            ▼                    │
+│  │ (断言/Fixture)│  ┌─────────────────────┐      │
+│  └───────────────┘  │ RPCEndpoint          │      │
+│                     │ (底层TCP/UDP收发)    │      │
+│                     └──────────┬──────────┘      │
+├────────────────────────────────┼───────────────────┤
+│              协议层 (Protocol Layer - 手写XDR)      │
+│  ┌────────────────┐  ┌───────┴──────────────┐     │
+│  │ xdr_codec.hpp  │  │ nfs3_types.hpp        │     │
+│  │ (XDR编解码模板) │  │ (NFSv3数据结构定义)   │     │
+│  └────────────────┘  └────────────────────────┘     │
+├─────────────────────────────────────────────────────┤
+│                  传输层 (Transport)                  │
+│            TCP Socket / UDP Socket                  │
+│            (通过libtirpc的clnt_create)              │
+└─────────────────────────────────────────────────────┘
 ```
 
 ### 核心组件职责
 
-| 组件 | 文件 | 职责 |
-|------|------|------|
-| **RPCEndpoint** | `rpc_endpoint.h/c` | 管理TCP/UDP连接，收发RPC消息片段 |
-| **NFS3TestClient** | `nfs3_client.h/c` | 封装所有22个NFSv3过程的调用API |
-| **TestContext** | `test_context.h/c` | 管理测试生命周期（setup/teardown） |
-| **Assert Macros** | `nfs3_assert.h` | 提供NFS特定的断言宏 |
-| **XDR Helpers** | `xdr_helpers.h/c` | 辅助XDR编解码的工具函数 |
+| 组件 | 文件 | 语言 | 职责 |
+|------|------|------|------|
+| **RPCEndpoint** | `rpc_endpoint.hpp/cpp` | C++ | 封装libtirpc CLIENT句柄，管理连接生命周期 |
+| **NFS3TestClient** | `nfs3_client.hpp/cpp` | C++ | 封装所有22个NFSv3过程调用API（类型安全） |
+| **TestContext** | `test_context.hpp/cpp` | C++ | 管理测试生命周期（GTest Fixture封装） |
+| **XDR Codec** | `xdr_codec.hpp/cpp` | C++ | 模板化的XDR编解码器（替代rpcgen生成代码） |
+| **NFS3 Types** | `nfs3_types.hpp` | C++ | RFC 1813所有数据结构的C++定义（struct/enum/using） |
+
+---
+
+## 项目结构（CMake组织）
+
+```
+nfs3_rpc_tests/
+├── CMakeLists.txt                 # 顶层CMake配置
+├── cmake/
+│   ├── FindGTest.cmake            # GTest查找模块
+│   └── FindTirpc.cmake            # libtirpc查找模块
+├── include/
+│   ├── nfs3/
+│   │   ├── rpc_endpoint.hpp       # RPC连接管理（PIMPL隐藏实现）
+│   │   ├── nfs3_client.hpp        # NFSv3客户端高级API
+│   │   ├── test_context.hpp       # 测试上下文（GTest Fixture）
+│   │   ├── xdr_codec.hpp          # XDR编解码模板
+│   │   ├── nfs3_types.hpp         # NFSv3数据结构定义
+│   │   └── nfs3_constants.hpp     # 常量定义（程序号、版本号、错误码等）
+│   └── nfs3/
+│       └── detail/                # 内部实现细节（不暴露给用户）
+│           ├── rpc_msg.hpp        # RPC消息结构（call_body, reply_body等）
+│           └── xdr_primitive.hpp  # 基础XDR类型编解码
+├── src/
+│   ├── rpc_endpoint.cpp           # RPCEndpoint实现（基于libtirpc clnt_*）
+│   ├── nfs3_client.cpp            # 22个NFSv3过程的具体实现
+│   ├── test_context.cpp           # TestContext实现
+│   ├── xdr_codec.cpp              # XDR编解码器实现
+│   └── detail/
+│       ├── rpc_msg.cpp            # RPC消息序列化
+│       └── xdr_primitive.cpp      # int32, uint32, string, opaque等基础类型
+├── tests/
+│   ├── CMakeLists.txt            # 测试可执行文件定义
+│   ├── test_rpc_null.cpp         # NULL过程测试
+│   ├── test_rpc_errors.cpp       # RPC错误处理测试
+│   ├── test_nfs3_getattr.cpp     # GETATTR/SETATTR测试
+│   ├── test_nfs3_lookup.cpp      # LOOKUP测试
+│   ├── test_nfs3_readwrite.cpp   # READ/WRITE测试
+│   ├── test_nfs3_create.cpp      # CREATE/MKDIR测试
+│   ├── test_nfs3_remove.cpp      # REMOVE/RMDIR测试
+│   ├── test_nfs3_readdir.cpp     # READDIR/READDIRPLUS测试
+│   ├── test_nfs3_other.cpp       # 其他操作测试
+│   └── test_nfs3_stress.cpp      # 边界条件/压力测试
+├── third_party/                   # 可选：预下载的gtest（如果系统没有）
+│   └── googletest/               # Git submodule或打包携带
+├── README.md                     # 使用文档
+└── scripts/
+    └── run_tests.sh              # 便捷运行脚本
+```
+
+---
 
 ## ADDED Requirements
 
+### Requirement: 最小化依赖构建
+
+系统 SHALL 在仅安装 g++, cmake, libtirpc-dev 的情况下完成核心功能编译。
+
+#### Scenario: 基础环境安装（Ubuntu示例）
+- **GIVEN** 一个全新的Ubuntu 22.04系统
+- **WHEN** 执行以下命令：
+  ```bash
+  sudo apt update && sudo apt install -y g++ cmake pkg-config libtirpc-dev
+  ```
+- **THEN** 可以成功执行 `cmake -B build && cmake --build build`
+- **AND** 核心库（libnfs3_test_core.a）编译通过
+- **AND** 无需安装rpcgen, openssl, 或其他额外包
+
+#### Scenario: 添加测试框架支持（可选）
+- **GIVEN** 已安装基础依赖
+- **WHEN** 执行 `sudo apt install -y libgtest-dev`
+- **THEN** 测试用例可以编译并运行
+- **AND** 如果未安装gtest，核心库仍可正常编译和使用
+
+---
+
+### Requirement: 手写XDR编解码器
+
+系统 SHALL 提供一套完整的C++模板化XDR编解码器，无需依赖rpcgen。
+
+#### Scenario: 基础类型编解码
+- **GIVEN** XDRCodec模板类
+- **WHEN** 对int32_t, uint32_t, uint64_t, std::string, std::vector<uint8_t>进行pack/unpack
+- **THEN** 输出符合RFC 4506 (XDR)标准的字节流
+- **AND** 支持网络字节序转换（大端）
+
+#### Scenario: 复合结构体编解码
+- **GIVEN** 定义好的NFSv3数据结构（如fattr3, LOOKUP3args等）
+- **WHEN** 调用xdr_encode(args, buffer)或xdr_decode(buffer, result)
+- **THEN** 结构体的所有字段按XDR规则正确序列化/反序列化
+- **AND** 支持嵌套结构体、变长数组、联合体(union)、可选字段
+
+#### Scene: 与libtirpc的互操作性
+- **GIVEN** 使用手写XDR编码的请求
+- **WHEN** 通过libtirpc发送到标准NFS服务器
+- **THEN** 服务器能正确解析请求并返回响应
+- **AND** 手写XDR解码器能正确解析服务器返回的标准格式响应
+
+---
+
 ### Requirement: RPC连接管理
 
-系统 SHALL 提供可靠的RPC连接管理能力，支持TCP和UDP两种传输方式。
+系统 SHALL 提供可靠的RPC连接管理能力，底层基于libtirpc。
 
 #### Scenario: 建立TCP连接到NFS服务器
 - **GIVEN** 一个运行中的NFSv3服务器（地址:port）
-- **WHEN** 调用 `rpc_endpoint_create("tcp", "192.168.1.100", 2049)`
-- **THEN** 成功建立TCP连接并返回有效的endpoint句柄
-- **AND** 连接可用于后续RPC调用
+- **WHEN** 调用 `RPCEndpoint::create("tcp", "192.168.1.100", 2049)`
+- **THEN** 成功建立TCP连接并返回RPCEndpoint对象
+- **AND** 连接内部持有有效的libtirpc CLIENT*
 
 #### Scenario: 发送RPC消息并接收响应
-- **GIVEN** 一个已建立的RPC endpoint
-- **WHEN** 调用 `rpc_call(endpoint, xid, proc, args, &reply)`
-- **THEN** 正确封装RPC消息（fragment header + RPC msg + XDR参数）
-- **AND** 成功接收并解析服务端响应
-- **AND** 返回RPC状态码和NFS过程特定结果
+- **GIVEN** 一个已建立的RPCEndpoint
+- **WHEN** 调用 `endpoint.call<NFS3_RES>(proc_num, args)`
+- **THEN** 内部正确封装RPC消息（XID分配、auth设置）
+- **AND** 通过libtirpc clnt_call()发送并接收响应
+- **AND** 返回类型安全的NFS3结果对象（包含状态码和数据）
 
-#### Scenario: 处理网络超时
-- **GIVEN** 一个已建立的RPC endpoint
-- **WHEN** 服务端在指定超时时间内未响应
-- **THEN** 返回 `RPC_TIMEOUT` 错误
-- **AND** 连接保持有效（可重试）
+#### Scenario: 连接生命周期管理（RAII）
+- **GIVEN** 创建的RPCEndpoint对象
+- **WHEN** 对象离开作用域被销毁
+- **THEN** 自动调用clnt_destroy()释放资源
+- **AND** 支持显式shutdown()提前关闭
 
 ---
 
@@ -95,21 +239,19 @@
 
 #### Scenario: NULL请求正常响应
 - **GIVEN** 连接到NFSv3服务器
-- **WHEN** 发送NULL请求（无参数）
-- **THEN** 服务器返回成功响应（无返回数据）
+- **WHEN** 发送NULL请求（无参数，返回Void）
+- **THEN** 服务器返回成功响应
 - **AND** XID匹配请求
 
 #### Scenario: 顺序多个NULL请求
 - **GIVEN** 连接到NFSv3服务器
 - **WHEN** 连续发送10个不同XID的NULL请求
 - **THEN** 每个请求都收到匹配XID的成功响应
-- **AND** 响应顺序与请求顺序一致
 
 #### Scenario: 并发NULL请求
 - **GIVEN** 连接到NFSv3服务器
-- **WHEN** 同时发送5个不同XID的NULL请求
+- **WHEN** 同时发送5个不同XID的NULL请求（多线程或异步）
 - **THEN** 所有请求都收到正确响应
-- **AND** 每个响应对应正确的XID
 
 #### Scenario: NULL请求带额外数据（容错性）
 - **GIVEN** 连接到NFSv3服务器
@@ -123,14 +265,14 @@
 系统 SHALL 测试GETATTR、SETATTR过程的正确性和错误处理。
 
 #### Scenario: GETATTR获取根目录属性
-- **GIVEN** 已获取根目录文件句柄（通过MOUNT或硬编码）
+- **GIVEN** 已获取根目录文件句柄（零长度特殊handle或MOUNT获取）
 - **WHEN** 调用GETATTR(root_fh)
 - **THEN** 返回成功的fattr3结构
 - **AND** type字段为NF3DIR
 - **AND** size >= 0
 
 #### Scenario: GETATTR无效句柄错误
-- **GIVEN** 一个无效的文件句柄（全零或随机）
+- **GIVEN** 一个无效的文件句柄（全零或随机64字节）
 - **WHEN** 调用GETATTR(invalid_fh)
 - **THEN** 返回NFS3ERR_BADHANDLE错误
 
@@ -139,12 +281,6 @@
 - **WHEN** 调用SETATTR设置size=0（截断文件）
 - **THEN** 返回成功
 - **AND** 后续GETATTR确认size=0
-
-#### Scenario: SETATTR修改时间戳
-- **GIVEN** 一个已存在的文件句柄
-- **WHEN** 调用SETATTR设置mtime为指定时间
-- **THEN** 返回成功
-- **AND** GETATTR确认mtime已更新
 
 ---
 
@@ -168,21 +304,10 @@
 - **WHEN** LOOKUP(root, "nonexist.txt")
 - **THEN** 返回NFS3ERR_NOENT错误
 
-#### Scenario: LOOKUP查找跨目录文件
-- **GIVEN** 根目录句柄，已知子目录"subdir"及其下文件"file.txt"
-- **WHEN** 先LOOKUP(root, "subdir")获取dir_handle
-- **AND** 再LOOKUP(dir_handle, "file.txt")
-- **THEN** 成功返回file.txt的句柄
-
-#### Scenario: LOOKUP空名称错误
-- **GIVEN** 任意目录句柄
-- **WHEN** LOOKUP(dir, "")
-- **THEN** 返回NFS3ERR_INVAL或NFS3ERR_NOENT错误
-
-#### Scene: LOOKUP超长文件名（>255字节）
+#### Scenario: LOOKUP空名称/超长名称错误
 - **GIVEN** 目录句柄
-- **WHEN** LOOKUP(dir, "256字节长的文件名...")
-- **THEN** 返回NFS3ERR_NAMETOOLONG或NFS3ERR_IO错误
+- **WHEN** LOOKUP(dir, "") 或 LOOKUP(dir, ">255字节名称")
+- **THEN** 返回NFS3ERR_INVAL/NFS3ERR_NOENT/NFS3ERR_NAMETOOLONG
 
 ---
 
@@ -191,116 +316,37 @@
 系统 SHALL 测试READ/WRITE过程的数据完整性。
 
 #### Scenario: READ读取整个小文件
-- **GIVEN** 一个包含已知内容（如"hello world\n"，12字节）的文件句柄
+- **GIVEN** 包含已知内容的文件句柄
 - **WHEN** READ(fh, offset=0, count=1024)
-- **THEN** 返回data长度=12
-- **AND** data内容与写入时一致
-- **AND** eof=TRUE（如果offset+count >= file_size）
+- **THEN** 返回data长度等于实际文件大小
+- **AND** data内容一致，eof=TRUE
 
-#### Scenario: READ偏移读取
-- **GIVEN** 一个包含"abcdefghij"(10字节)的文件
-- **WHEN** READ(fh, offset=3, count=4)
-- **THEN** 返回data="defg"
-
-#### Scenario: READ超出文件末尾
-- **GIVEN** 一个100字节的文件
-- **WHEN** READ(fh, offset=200, count=50)
-- **THEN** 返回NFS3ERR_INVAL或eof=TRUE且data为空
-
-#### Scenario: READ目录当作文件
-- **GIVEN** 一个目录句柄
-- **WHEN** READ(dir_fh, offset=0, count=1024)
-- **THEN** 返回NFS3ERR_ISDIR错误
-
-#### Scenario: WRITE写入新文件
-- **GIVEN** 通过CREATE创建的新文件句柄
+#### Scenario: WRITE写入新文件并回验
+- **GIVEN** CREATE创建的新文件句柄
 - **WHEN** WRITE(fh, offset=0, count=1024, stable=DATA_SYNC, data)
 - **THEN** 返回count=1024
-- **AND** committed = FILE_SYNC 或 DATA_SYNC
-- **AND** 后续READ验证数据一致性
+- **AND** 后续READ验证数据完全一致
 
-#### Scenario: WRITE追加写入
-- **GIVEN** 已有100字节的文件句柄
-- **WHEN** WRITE(fh, offset=100, count=50, data)
-- **THEN** 返回count=50
-- **AND** 文件总大小变为150字节
-
-#### Scenario: WRITE覆盖写入
-- **GIVEN** 已有数据的文件句柄
-- **WHEN** WRITE(fh, offset=0, count=原数据长度, 新数据)
-- **THEN** 原数据被完全覆盖
-- **AND** READ验证新数据
-
-#### Scenario: UNSTABLE写入后COMMIT
-- **GIVEN** 支持UNSTABLE写入的服务器
-- **WHEN** WRITE(..., stable=UNSTABLE)
-- **AND** COMMIT(fh, offset=0, count=written_bytes)
-- **THEN** COMMIT返回成功表示数据已持久化
+#### Scenario: READ/WRITE错误路径
+- **GIVEN** 目录句柄当作文件读取
+- **WHEN** READ(dir_fh, ...)
+- **THEN** 返回NFS3ERR_ISDIR
 
 ---
 
 ### Requirement: NFSv3 创建删除操作测试
 
-系统 SHALL 测试CREATE/MKDIR/REMOVE/RMDIR等修改操作的语义正确性。
+系统 SHALL 测试CREATE/MKDIR/REMOVE/RMDIR的语义正确性。
 
-#### Scenario: CREATE创建新文件(UNCHECKED模式)
-- **GIVEN** 目录句柄和新文件名"newfile.txt"
-- **WHEN** CREATE(dir, "newfile.txt", UNCHECKED, attrs)
-- **THEN** 返回新文件句柄
-- **AND** LOOKUP可找到该文件
-- **AND** 如果文件已存在则截断为0长度
+#### Scenario: CREATE三种模式
+- **UNCHECKED**: 创建新文件或截断已存在文件
+- **GUARDED**: 仅创建新文件，已存在则返回NFS3ERR_EXIST
+- **EXCLUSIVE**: 幂等创建（行为因实现而异）
 
-#### Scenario: CREATE创建新文件(GUARDED模式)
-- **GIVEN** 目录句柄和不存在的文件名
-- **WHEN** CREATE(dir, "newfile.txt", GUARDED, attrs)
-- **THEN** 成功创建并返回句柄
-
-#### Scenario: GUARDED模式文件已存在失败
-- **GIVEN** 目录句柄和已存在的文件名
-- **WHEN** CREATE(dir, "existing.txt", GUARDED, attrs)
-- **THEN** 返回NFS3ERR_EXIST错误
-
-#### Scenario: EXCLUSIVE模式创建
-- **GIVEN** 目录句柄
-- **WHEN** CREATE(dir, "exclusive.txt", EXCLUSIVE, verf)
-- **THEN** 如果不存在则创建（行为可能因实现而异）
-
-#### Scenario: MKDIR创建目录
-- **GIVEN** 目录句柄
-- **WHEN** MKDIR(dir, "newdir", attrs)
-- **THEN** 返回新目录句柄
-- **AND** GETATTR显示type=NF3DIR
-
-#### Scenario: MKDIR父目录不存在
-- **GIVEN** 不存在的目录句柄
-- **WHEN** MKDIR(invalid_dir, "sub", attrs)
-- **THEN** 返回NFS3ERR_STALE或NFS3ERR_IO等错误
-
-#### Scenario: REMOVE删除已存在文件
-- **GIVEN** 包含"a.txt"的目录句柄
-- **WHEN** REMOVE(dir, "a.txt")
-- **THEN** 返回成功
-- **AND** 后续LOOKUP返回NFS3ERR_NOENT
-
-#### Scenario: REMOVE删除不存在的文件
-- **GIVEN** 目录句柄
-- **WHEN** REMOVE(dir, "ghost.txt")
-- **THEN** 返回NFS3ERR_NOENT错误
-
-#### Scenario: RMDIR删除空目录
-- **GIVEN** 先创建的空目录句柄及其父目录
-- **WHEN** RMDIR(parent_dir, "empty_dir")
-- **THEN** 删除成功
-
-#### Scenario: RMDIR非空目录失败
-- **GIVEN** 包含子项的目录
-- **WHEN** RMDIR(parent, "nonempty_dir")
-- **THEN** 返回NFS3ERR_NOTEMPTY错误
-
-#### Scenario: RMDIR不存在的目录
-- **GIVEN** 目录句柄
-- **WHEN** RMDIR(dir, "no_such_dir")
-- **THEN** 返回NFS3ERR_NOENT错误
+#### Scenario: MKDIR/REMOVE/RMDIR正常与错误路径
+- **MKDIR**: 成功创建目录（type=NF3DIR），父目录无效时返回STALE/IO
+- **REMOVE**: 删除成功，不存在时返回NOENT
+- **RMDIR**: 删除空目录成功，非空返回NOTEMPTY，不存在返回NOENT
 
 ---
 
@@ -308,41 +354,20 @@
 
 系统 SHALL 测试READDIR/READDIRPLUS的分页和cookie机制。
 
-#### Scenario: READDIR读取根目录
-- **GIVEN** 根目录句柄（已知包含a.txt, b.txt, subdir/）
-- **WHEN** READDIR(root, cookie=0, cookieverf=0, count=8192)
+#### Scenario: READDIR基本枚举
+- **GIVEN** 根目录句柄
+- **WHEN** READDIR(cookie=0, cookieverf=0, count=8192)
 - **THEN** 返回entry列表包含"."和".."
-- **AND** 包含已知文件/子目录
 - **AND** eof=TRUE（如果一次读完）
 
-#### Scenario: READDIR分页读取
-- **GIVEN** 包含200+文件的目录
-- **WHEN** 第一次READDIR(cookie=0, count=1024)
-- **AND** 使用返回的last cookie继续READDIR直到eof
-- **THEN** 所有文件都被枚举
-- **AND** 无重复条目
+#### Scenario: READDIR分页与错误
+- **分页**: 大目录使用cookie遍历完所有条目无遗漏重复
+- **TOOSMALL**: count太小(<512)返回NFS3ERR_TOOSMALL
 
-#### Scenario: READDIR cookieverf验证
-- **GIVEN** 目录句柄
-- **WHEN** 第一次READDIR获取cookieverf
-- **AND** 第二次使用相同cookieverf继续读取
-- **THEN** 成功返回后续条目
-
-#### Scenario: READDIR count太小错误
-- **GIVEN** 任意目录
-- **WHEN** READDIR(dir, cookie=0, count=10) // 太小无法容纳header
-- **THEN** 返回NFS3ERR_TOOSMALL错误
-
-#### Scenario: READDIRPLUS带属性读取
-- **GIVEN** 包含文件的目录
+#### Scenario: READDIRPLUS带属性
 - **WHEN** READDIRPLUS(dir, cookie=0, dircount=1024, maxcount=8192)
-- **THEN** 返回entry列表及每个条目的文件属性（fh, name, attrs）
-- **AND** 属性信息与独立GETATTR结果一致
-
-#### Scenario: READDIRPLUS dircount/maxcount太小
-- **GIVEN** 目录句柄
-- **WHEN** READDIRPLUS(dir, dircount=10, maxcount=8192) // dircount太小
-- **THEN** 返回NFS3ERR_TOOSMALL
+- **THEN** 返回entry列表及每个条目的fh, name, attrs
+- **AND** dircount/maxcount太小时返回TOOSMALL
 
 ---
 
@@ -350,102 +375,26 @@
 
 系统 SHALL 测试ACCESS/READLINK/SYMLINK/MKNOD/RENAME/LINK/PATHCONF/FSSTAT/FSINFO/COMMIT。
 
-#### Scenario: ACCESS检查读权限
-- **GIVEN** 文件句柄
-- **WHEN** ACCESS(fh, ACCESS3_READ)
-- **THEN** 返回access掩码包含ACCESS3_READ位
-
-#### Scenario: READLINK读取符号链接
-- **GIVEN** 符号链接句柄
-- **WHEN** READLINK(symlink_fh)
-- **THEN** 返回链接目标路径
-
-#### Scenario: READLINK对非符号链接
-- **GIVEN** 普通文件或目录句柄
-- **WHEN** READLINK(non_symlink)
-- **THEN** 返回NFS3ERR_INVAL错误
-
-#### Scenario: SYMLINK创建符号链接
-- **GIVEN** 目录句柄
-- **WHEN** SYMLINK(dir, "link_name", target_path, attrs)
-- **THEN** 创建符号链接
-- **AND** READLINK返回target_path
-
-#### Scenario: MKNOD创建FIFO
-- **GIVEN** 目录句柄
-- **WHEN** MKNOD(dir, "pipe", NF3FIFO, attrs)
-- **THEN** 创建FIFO特殊文件
-
-#### Scenario: RENAME重命名文件
-- **GIVEN** 源目录含"old.txt"，目标目录
-- **WHEN** RENAME(from_dir, "old.txt", to_dir, "new.txt")
-- **THEN** from_dir中"old.txt"消失
-- **AND** to_dir中出现"new.txt"
-- **AND** 文件句柄保持不变（某些实现）
-
-#### Scenario: LINK创建硬链接
-- **GIVEN** 已存在的文件句柄和目标目录
-- **WHEN** LINK(file_fh, target_dir, "hardlink")
-- **THEN** 创建硬链接指向同一inode
-- **AND** 两路径GETATTR返回相同fileid
-
-#### Scenario: PATHCONF查询路径配置
-- **GIVEN** 任意文件或目录句柄
-- **WHEN PATHCONF(obj)
-- **THEN** 返回pathconf信息（linkmax, namemax, notrunc, chownrestricted, etc.）
-
-#### Scenario: FSSTAT查询文件系统统计
-- **GIVEN** 根目录句柄
-- **WHEN** FSSTAT(root)
-- **THEN** 返回total_bytes, free_bytes, avail_bytes, total_files, free_files, avail_files, invarsec
-
-#### Scenario: FSINFO查询文件系统能力
-- **GIVEN** 根目录句柄
-- **WHEN** FSINFO(root)
-- **THEN** 返回rtmax, rtpref, wtmmax, wtpref, dtpref, maxfilesize, time_delta, properties
-
-#### Scenario: COMMIT提交数据
-- **GIVEN** 通过UNSTABLE WRITE写入的文件
-- **WHEN** COMMIT(fh, offset=0, count=file_size)
-- **THEN** 数据已持久化到存储
+每个过程至少覆盖：
+- 正常路径（成功调用）
+- 主要错误路径（1-2个典型错误码）
 
 ---
 
 ### Requirement: RPC错误处理测试
 
-系统 SHALL 全面测试RPC层的各种错误场景（参考Vaiz/nfs3 rpc_tests.rs）。
+系统 SHALL 全面测试RPC层的各种错误场景。
 
-#### Scenario: 无效RPC版本号
-- **GIVEN** 连接到NFS服务器
-- **WHEN** 发送rpcvers=0x12345678的CALL消息
-- **THEN** 服务器返回MSG_DENIED + RPC_MISMATCH
-- **AND** low/high指示支持的版本范围（应为2）
+#### Scenario: 协议级错误
+- **无效RPC版本号**(0x12345678): 期望 MSG_DENIED + RPC_MISMATCH
+- **未知程序号**(0x12345678): 期望 PROG_UNAVAIL
+- **无效NFS版本号**(0x12345678): 期望 PROG_MISMATCH (low=high=3)
+- **无效过程号**(0x12345678): 期望 PROC_UNAVAIL
 
-#### Scenario: 未知程序号
-- **GIVEN** 连接到NFS服务器
-- **WHEN** 发送prog=0x12345678的CALL消息
-- **THEN** 返回MSG_ACCEPTED + PROG_UNAVAIL
-
-#### Scenario: 无效NFS版本号
-- **GIVEN** 连接到NFS服务器
-- **WHEN** 发送vers=0x12345678的NFS CALL
-- **THEN** 返回MSG_ACCEPTED + PROG_MISMATCH
-- **AND** low/high指示支持版本（应为3）
-
-#### Scenario: 无效过程号
-- **GIVEN** 连接到NFS服务器
-- **WHEN** 发送proc=0x12345678的NFSv3 CALL
-- **THEN** 返回MSG_ACCEPTED + PROC_UNAVAIL
-
-#### Scenario: XID不匹配检测
-- **GIVEN** 连接到NFS服务器
-- **WHEN** 发送请求后故意修改期望的XID进行比对
-- **THEN** 框架能检测到XID不匹配并报告错误
-
-#### Scenario: 乱序响应处理
-- **GIVEN** 连接到NFS服务器
-- **WHEN** 快速连续发送XID=100和XID=1的两个请求
-- **THEN** 能正确匹配每个响应对应的XID（即使乱序到达）
+#### Scenario: 传输层行为
+- **乱序响应**: 快速发送XID=100和XID=1，正确匹配每个响应
+- **XID不匹配检测**: 框架能检测并报告XID不一致
+- **超时重试**: 可配置超时时间，超时后返回错误
 
 ---
 
@@ -453,37 +402,15 @@
 
 系统 SHALL 测试边界值和异常输入的处理能力。
 
-#### Scenario: 零长度文件名
-- **GIVEN** 目录句柄
-- **WHEN** LOOKUP/CREATE/REMOVE("", ...)
-- **THEN** 返回适当的错误码（NFS3ERR_INVAL或NOENT）
+#### Scenario: 文件名边界
+- **零长度名称"": 返回 INVAL/NOENT
+- **最大合法名称(255字符)**: 成功（如果FS支持）
+- **超长名称(>1024字节)**: 返回 NAMETOOLONG
+- **含null字节名称**: 返回 INVAL
 
-#### Scenario: 最大长度文件名（255字符）
-- **GIVEN** 目录句柄
-- **WHEN** CREATE(dir, "255字符长的合法文件名...", attrs)
-- **THEN** 成功创建（如果文件系统支持）
-
-#### Scenario: 超长文件名（>1024字节）
-- **GIVEN** 目录句柄
-- **WHEN** LOOKUP(dir, "超长文件名...")
-- **THEN** 返回NFS3ERR_NAMETOOLONG或优雅降级
-
-#### Scenario: 特殊字符文件名
-- **GIVEN** 目录句柄
-- **WHEN** CREATE(dir, "file with spaces/tabs/\0", attrs)
-- **THEN** 根据RFC 1813，文件名为UTF-8字符串（不含null字节）
-- **AND** null字节应导致NFS3ERR_INVAL
-
-#### Scenario: 大量并发请求（压力测试）
-- **GIVEN** 连接到NFS服务器
-- **WHEN** 同时发起100个并发READ/WRITE请求
-- **THEN** 所有请求最终完成（无死锁/崩溃）
-- **AND** 响应时间在合理范围内
-
-#### Scenario: 快速重复请求（幂等性）
-- **GIVEN** 连接到NFS服务器
-- **WHEN** 相同XID的请求发送两次（网络重传模拟）
-- **THEN** 服务器正确处理（幂等操作返回相同结果）
+#### Scenario: 并发压力
+- **100并发请求**: 全部完成无死锁崩溃
+- **重复XID请求**: 幂等处理正确
 
 ---
 
@@ -495,66 +422,281 @@
 
 （无 - 这是全新项目）
 
-## 技术选型说明
+## 关键实现细节
 
-### 为什么选择libtirpc而非传统libc RPC？
+### XDR编解码器设计（核心创新点）
 
-| 特性 | libc内置RPC | libtirpc |
-|------|------------|----------|
-| 维护状态 | ❌ 已从glibc移除 | ✅ 活跃维护 |
-| IPv6支持 | ❌ 仅IPv4 | ✅ 完整支持 |
-| RPCSEC_GSS | ❌ 不支持 | ✅ 支持 |
-| 现代编译器兼容 | ⚠️ 警告较多 | ✅ C99/C11兼容 |
-| 可移植性 | ⚠️ 依赖glibc版本 | ✅ 独立包 |
+```cpp
+// 示例：模板化XDR编解码器（xdr_codec.hpp）
+namespace nfs3 {
+namespace xdr {
 
-### 测试组织结构
+class XdrBuffer {
+    std::vector<uint8_t> buffer_;
+    size_t pos_ = 0;
+public:
+    // 基础类型编解码
+    void pack(int32_t val);       // 有符号整数
+    void pack(uint32_t val);      // 无符号整数
+    void pack(uint64_t val);      // 64位整数
+    void pack(const std::string& s);  // 变长字符串(4字节长度+数据)
+    void pack(std::span<const uint8_t>);  // 不透明数据(opaque)
+    
+    void unpack(int32_t& val);
+    void unpack(uint32_t& val);
+    void unpack(uint64_t& val);
+    void unpack(std::string& s);
+    void unpack(std::vector<uint8_t>&);
+    
+    // 复合类型特化（在nfs3_types中为每种结构体提供）
+    template<typename T>
+    void pack(const T& obj);  // 要求T有serialize()方法
+    
+    template<typename T>
+    void unpack(T& obj);      // 要求T有deserialize()方法
+    
+    const auto& data() const { return buffer_; }
+    size_t size() const { return buffer_.size(); }
+};
 
-```
-nfs3_rpc_tests/
-├── include/
-│   ├── rpc_endpoint.h          # RPC连接管理
-│   ├── nfs3_client.h           # NFSv3客户端API
-│   ├── test_context.h          # 测试上下文
-│   ├── nfs3_assert.h           # 断言宏
-│   ├── xdr_helpers.h           # XDR辅助函数
-│   └── nfs3_types.h            # NFSv3数据类型（从nfs_prot.x生成）
-├── src/
-│   ├── rpc_endpoint.c          # RPC连接实现
-│   ├── nfs3_client.c           # NFSv3过程封装
-│   ├── test_context.c          # 测试生命周期
-│   └── xdr_helpers.c           # XDR辅助实现
-├── tests/
-│   ├── test_rpc_null.c         # NULL过程测试
-│   ├── test_rpc_errors.c       # RPC错误处理测试
-│   ├── test_nfs3_getattr.c     # GETATTR/SETATTR测试
-│   ├── test_nfs3_lookup.c      # LOOKUP测试
-│   ├── test_nfs3_readwrite.c   # READ/WRITE测试
-│   ├── test_nfs3_create.c      # CREATE/MKDIR测试
-│   ├── test_nfs3_remove.c      # REMOVE/RMDIR测试
-│   ├── test_nfs3_readdir.c     # READDIR/READDIRPLUS测试
-│   ├── test_nfs3_other.c       # 其他操作测试
-│   └── test_nfs3_stress.c      # 边界条件/压力测试
-├── xdr/                        # XDR生成代码
-│   ├── nfs_prot.h              # rpcgen生成的头文件
-│   ├── nfs_prot_xdr.c          # XDR编解码函数
-│   └── nfs_prot_clnt.c         # 客户端桩代码
-├── Makefile                    # 构建系统
-├── README.md                   # 使用文档
-└── run_tests.sh                # 测试运行脚本
+} // namespace xdr
+} // namespace nfs3
 ```
 
-### 编译与运行
+```cpp
+// 示例：NFSv3数据结构定义（nfs3_types.hpp）
+namespace nfs3 {
+
+enum class ftype3 : uint32_t {
+    NF3REG = 1, NF3DIR = 2, NF3BLK = 3,
+    NF3CHR = 4, NF3LNK = 5, NF3SOCK = 6,
+    NF3FIFO = 7
+};
+
+struct nfstime3 {
+    uint32_t seconds;
+    uint32_t nseconds;
+    
+    void serialize(xdr::XdrBuffer& buf) const {
+        buf.pack(seconds);
+        buf.pack(nseconds);
+    }
+    
+    void deserialize(xdr::XdrBuffer& buf) {
+        buf.unpack(seconds);
+        buf.unpack(nseconds);
+    }
+};
+
+struct fattr3 {
+    ftype3 type_;
+    uint32_t mode;
+    uint32_t nlink;
+    uint32_t uid;
+    uint32_t gid;
+    uint64_t size;
+    uint64_t used;
+    specdata3 rdev;  // 嵌套结构体
+    uint64_t fsid;
+    uint64_t fileid;
+    nfstime3 atime, mtime, ctime;
+    
+    void serialize(xdr::XdrBuffer& buf) const;
+    void deserialize(xdr::XdrBuffer& buf);
+};
+
+// ... 所有RFC 1813定义的结构体类似实现
+
+} // namespace nfs3
+```
+
+### RPCEndpoint 设计（基于libtirpc）
+
+```cpp
+// rpc_endpoint.hpp - PIMPL模式隐藏libtirpc细节
+namespace nfs3 {
+
+class RPCEndpointImpl;  // 前向声明实现类
+
+class RPCEndpoint {
+    std::unique_ptr<RPCEndpointImpl> impl_;
+public:
+    static RPCEndpoint create(
+        const std::string& proto,  // "tcp" or "udp"
+        const std::string& host,
+        uint16_t port = 2049,
+        std::chrono::milliseconds timeout = std::chrono::seconds(25)
+    );
+    
+    ~RPCEndpoint();
+    
+    // 禁止拷贝，允许移动
+    RPCEndpoint(const RPCEndpoint&) = delete;
+    RPCEndpoint& operator=(const RPCEndpoint&) = delete;
+    RPCEndpoint(RPCEndpoint&&) noexcept;
+    RPCEndpoint& operator=(RPCEndpoint&&) noexcept;
+    
+    // 泛型RPC调用
+    template<typename ResType>
+    std::expected<ResType, RpcError> call(
+        uint32_t proc_num,
+        const auto& args  // 任何可序列化的参数
+    );
+    
+    void shutdown();
+};
+
+} // namespace nfs3
+```
+
+### NFS3TestClient API设计
+
+```cpp
+// nfs3_client.hpp - 类型安全的22个过程API
+namespace nfs3 {
+
+class NFS3TestClient {
+    RPCEndpoint endpoint_;
+    nfs_fh3 root_fh_;  // 零长度或预设的根句柄
+    
+public:
+    explicit NFS3TestClient(RPCEndpoint ep);
+    
+    // ====== 过程0: NULL ======
+    std::expected<void, Nfs3Error> null();
+    
+    // ====== 过程1: GETATTR ======
+    std::expected<GETATTR3resok, Nfs3Error> getattr(const nfs_fh3& object);
+    
+    // ====== 过程2: SETATTR ======
+    std::expected<SETATTR3resok, Nfs3Error> setattr(
+        const nfs_fh3& object,
+        const sattr3& new_attributes,
+        const SetattrGuard& guard
+    );
+    
+    // ====== 过程3: LOOKUP ======
+    std::expected<LOOKUP3resok, Nfs3Error> lookup(
+        const nfs_fh3& dir,
+        std::string_view name
+    );
+    
+    // ====== 过程4-21: 类似接口... ======
+    std::expected<ACCESS3resok, Nfs3Error> access(/* ... */);
+    std::expected<READLINK3resok, Nfs3Error> readlink(/* ... */);
+    std::expected<READ3resok, Nfs3Error> read(/* ... */);
+    std::expected<WRITE3resok, Nfs3Error> write(/* ... */);
+    std::expected<CREATE3resok, Nfs3Error> create(/* ... */);
+    // ... 其余过程
+    
+    // 便捷方法
+    const nfs_fh3& root_handle() const { return root_fh_; }
+    void set_root_handle(const nfs_fh3& fh) { root_fh_ = fh; }
+};
+
+} // namespace nfs3
+```
+
+### CMake 构建系统设计
+
+```cmake
+# CMakeLists.txt (顶层)
+cmake_minimum_required(VERSION 3.10)
+project(nfs3_rpc_tests VERSION 1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# 编译选项
+add_compile_options(
+    -Wall -Wextra -Wpedantic
+    $<$<CONFIG:Debug>:-g -O0 -DDEBUG>
+    $<$<CONFIG:Release>:-O2 -DNDEBUG>
+)
+
+# 查找依赖
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBTIRPC REQUIRED libtirpc)
+
+# 可选：Google Test
+option(BUILD_TESTS "Build unit tests" ON)
+if(BUILD_TESTS)
+    enable_testing()
+    find_package(GTest QUIET)
+    if(NOT GTest_FOUND)
+        message(STATUS "GTest not found, using bundled version")
+        add_subdirectory(third_party/googletest)
+    endif()
+endif()
+
+# 核心库
+add_library(nfs3_test_core STATIC
+    src/rpc_endpoint.cpp
+    src/nfs3_client.cpp
+    src/test_context.cpp
+    src/xdr_codec.cpp
+    src/detail/rpc_msg.cpp
+    src/detail/xdr_primitive.cpp
+)
+
+target_include_directories(nfs3_test_core PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${LIBTIRPC_INCLUDE_DIRS}
+)
+target_link_libraries(nfs3_test_core PUBLIC
+    ${LIBTIRPC_LIBRARIES}
+    pthread
+)
+target_compile_features(nfs3_test_core PUBLIC cxx_std_17)
+
+# 测试可执行文件
+if(BUILD_TESTS AND TARGET GTest::gtest)
+    add_subdirectory(tests)
+endif()
+```
+
+---
+
+## 编译与运行
+
+### 环境准备
 
 ```bash
-# 编译
-make all
+# Ubuntu/Debian (最小依赖)
+sudo apt update && sudo apt install -y \
+    g++ cmake pkg-config libtirpc-dev
 
+# 可选：测试框架
+sudo apt install -y libgtest-dev
+```
+
+### 构建
+
+```bash
+# 配置
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+
+# 编译核心库（不需要gtest也能工作）
+cmake --build build --target nfs3_test_core
+
+# 编译并运行测试（需要gtest）
+cmake --build build
+cd build && ctest --output-on-failure
+```
+
+### 运行
+
+```bash
 # 运行全部测试
-./run_tests.sh --server <IP> --port 2049
+./build/test_nfs3_suite
 
-# 运行特定测试组
-./run_tests.sh --server <IP> --tests null,lookup,readwrite
+# 运行特定测试
+./build/test_nfs3_suite --gtest_filter="RpcNullTest.*"
 
-# 运行单个测试（详细输出）
-./test_nfs3_readwrite --server <IP> --port 2049 --verbose
+# 详细输出
+./build/test_nfs3_suite --gtest_print_time=1
+
+# 参数化：指定服务器地址
+./build/test_nfs3_lookup --server=192.168.1.100 --port=2049
 ```
