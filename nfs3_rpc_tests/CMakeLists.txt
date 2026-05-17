@@ -60,3 +60,15 @@ if(BUILD_TESTS)
         add_subdirectory(tests)
     endif()
 endif()
+
+option(BUILD_EXAMPLES "Build example programs" ON)
+
+if(BUILD_EXAMPLES AND TIRPC_FOUND)
+    add_executable(example_basic_connect examples/basic_connect.cpp)
+    target_link_libraries(example_basic_connect nfs3_test_core)
+    
+    add_executable(example_nfs_operations examples/nfs_operations.cpp)
+    target_link_libraries(example_nfs_operations nfs3_test_core)
+    
+    message(STATUS "Examples will be built")
+endif()

@@ -4,6 +4,10 @@
 #include <memory>
 #include <chrono>
 #include <expected>
+#include <vector>
+#include <cstring>
+#include <arpa/inet.h>
+
 #include "nfs3/xdr_codec.hpp"
 
 #ifdef HAVE_LIBTIRPC
@@ -78,10 +82,65 @@ public:
             return std::unexpected(RpcError::CONNECTION_FAILED);
         }
         
-        xdr::XdrBuffer request_buf;
-        request_buf.pack(args);
+        impl_->xid_counter_++;
         
-        xdr::XdrBuffer response_buf;
+        xdr::XdrBuffer req_buf;
+        req_buf.pack(args);
+        auto req_bytes = req_buf.data();
+        
+        std::vector<char> req_data(req_bytes.begin(), req_bytes.end());
+        char* req_ptr = req_data.data();
+        u_int req_len = req_data.size();
+        
+        std::vector<char> resp_data(65536, 0);
+        char* resp_ptr = resp_data.data();
+        u_int resp_len = 65536;
+        
+        struct timeval timeout_tv;
+        timeout_tv.tv_sec = impl_->timeout_.count() / 1000;
+        timeout_tv.tv_usec = (impl_->timeout_.count() % 1000) * 1000;
+        
+        enum clnt_stat result = clnt_call(
+            impl_->client_,
+            proc_num,
+            reinterpret_cast<xdrproc_t>(xdr_bytes),
+            reinterpret_cast<char*>(&req_ptr),
+            reinterpret_cast<xdrproc_t>(xdr_bytes),
+            reinterpret_cast<char*>(&resp_ptr),
+            timeout_tv
+        );
+        
+        switch (result) {
+            case RPC_SUCCESS: break;
+            case RPC_TIMEDOUT: return std::unexpected(RpcError::TIMEOUT);
+            case RPC_PROGUNAVAIL: return std::unexpected(RpcError::PROG_UNAVAIL);
+            case RPC_VERSMISMATCH: return std::unexpected(RpcError::PROG_MISMATCH);
+            case RPC_PROCUNAVAIL: return std::unexpected(RpcError::PROC_UNAVAIL);
+            default: return std::unexpected(RpcError::UNKNOWN);
+        }
+        
+        if constexpr (!std::is_same_v<ResType, void>) {
+            std::vector<uint8_t> resp_bytes(resp_ptr, resp_ptr + resp_len);
+            xdr::XdrBuffer resp_buf(resp_bytes);
+            ResType response;
+            resp_buf.unpack(response);
+            return response;
+        } else {
+            return {};
+        }
+#else
+        (void)proc_num;
+        (void)args;
+        return std::unexpected(RpcError::CONNECTION_FAILED);
+#endif
+    }
+    
+    template<typename ResType>
+    std::expected<ResType, RpcError> call_void(uint32_t proc_num) {
+#ifdef HAVE_LIBTIRPC
+        if (!is_connected()) {
+            return std::unexpected(RpcError::CONNECTION_FAILED);
+        }
         
         impl_->xid_counter_++;
         
@@ -110,18 +169,12 @@ public:
         
         if constexpr (!std::is_same_v<ResType, void>) {
             ResType response;
-            try {
-                response_buf.unpack(response);
-            } catch (const xdr::XdrError&) {
-                return std::unexpected(RpcError::DECODE_ERROR);
-            }
             return response;
         } else {
             return {};
         }
 #else
         (void)proc_num;
-        (void)args;
         return std::unexpected(RpcError::CONNECTION_FAILED);
 #endif
     }

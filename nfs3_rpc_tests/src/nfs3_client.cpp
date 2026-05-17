@@ -6,9 +6,8 @@ NFS3TestClient::NFS3TestClient(RPCEndpoint endpoint)
     : endpoint_(std::move(endpoint)) {}
 
 std::expected<void, Nfs3Error> NFS3TestClient::null() {
-    auto result = endpoint_.call<void>(
-        static_cast<uint32_t>(proc_num::NFSPROC3_NULL),
-        0
+    auto result = endpoint_.call_void<void>(
+        static_cast<uint32_t>(proc_num::NFSPROC3_NULL)
     );
     
     if (!result) {

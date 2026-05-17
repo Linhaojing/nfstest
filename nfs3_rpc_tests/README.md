@@ -1,270 +1,221 @@
-# NFSv3 RPC Test Suite
+# NFSv3 RPC 测试套件
 
-A comprehensive C++17 test suite for **NFSv3 protocol compliance testing** at the RPC level.
+一个 C++17 实现的 NFSv3 (RFC 1813) RPC 接口测试框架，使用手写 XDR 编解码器，不依赖 rpcgen。
 
-## ✨ Features
+## 特性
 
-- **Direct RPC Testing**: Constructs and validates raw RPC packets (bypasses kernel NFS client)
-- **Hand-written XDR Codec**: Zero dependency on `rpcgen` - fully type-safe C++ implementation
-- **Complete Coverage**: All 22 NFSv3 procedures (RFC 1813) with normal, error, and boundary tests
-- **Minimal Dependencies**: Only requires `libtirpc` for runtime
-- **Modern C++17**: Uses `std::expected`, `std::optional`, RAII, templates
-- **Google Test Integration**: Rich assertions, fixtures, CI-friendly output
+- **完整 NFSv3 协议支持**：覆盖全部 22 个 NFSv3 过程
+- **手写 XDR 编解码器**：无 rpcgen 依赖，类型安全
+- **最小依赖**：仅需 libtirpc、Google Test
+- **CMake 构建**：兼容 CMake 2.8+
+- **TCP 优先**：TCP 传输优先，UDP 支持计划中
 
-## 📋 Architecture
+## 依赖
 
-```
-┌─────────────────────────────────────────┐
-│           Test Cases Layer              │
-│  test_rpc_null.cpp  test_nfs3_readwrite │
-│  ... (10 test files, 63 test cases)     │
-├─────────────────────────────────────────┤
-│          Test Framework Layer           │
-│  ┌──────────────┐ ┌──────────────────┐  │
-│  │ TestContext   │ │ NFS3TestClient    │  │
-│  │ (GTest Fixture)│ │ (22 typed APIs)  │  │
-│  └──────┬───────┘ └────────┬─────────┘  │
-│         │                  │             │
-│  ┌──────▼──────────────────▼─────────┐  │
-│  │         RPCEndpoint               │  │
-│  │    (libtirpc TCP connection)      │  │
-│  └──────────────────┬────────────────┘  │
-├─────────────────────┼───────────────────┤
-│      Protocol Layer (Hand-written XDR)  │
-│  ┌────────────┐  ┌───────────────────┐  │
-│  │ xdr_codec  │  │ nfs3_types        │  │
-│  │ (template) │  │ (RFC 1813 structs)│  │
-│  └────────────┘  └───────────────────┘  │
-├─────────────────────────────────────────┤
-│         Transport: TCP via libtirpc      │
-└─────────────────────────────────────────┘
-```
+- C++17 编译器 (GCC 9+, Clang 10+)
+- CMake 2.8+
+- libtirpc-dev
+- libgtest-dev
 
-## 🔧 Dependencies
-
-### Required (Runtime)
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `g++` | ≥ 7.0 | C++17 compiler |
-| `cmake` | ≥ 2.8 | Build system |
-| `libtirpc-dev` | any | RPC/XDR runtime |
-
-### Optional (Testing)
-| Package | Purpose |
-|---------|---------|
-| `libgtest-dev` | Google Test framework |
-
-**Total: 3 required + 1 optional packages**
-
-## 🚀 Quick Start
-
-### Installation (Ubuntu/Debian)
+### Ubuntu/Debian 安装
 
 ```bash
-# Required dependencies
-sudo apt update && sudo apt install -y \
-    g++ cmake pkg-config libtirpc-dev
-
-# Optional: Google Test for running tests
-sudo apt install -y libgtest-dev
+sudo apt-get install cmake g++ libtirpc-dev libgtest-dev
 ```
 
-### Building
+## 构建
 
 ```bash
-# Clone and configure
 cd nfs3_rpc_tests
 mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Debug
-
-# Build core library (works without GTest)
-cmake --build . --target nfs3_test_core
-
-# Build everything including tests
-cmake --build .
+cmake ..
+make -j$(nproc)
 ```
 
-### Running Tests
+## 运行测试
 
 ```bash
-# Using convenience script (recommended)
-./scripts/run_tests.sh --server <NFS_SERVER_IP>
+# 运行所有测试
+./tests/test_nfs3_suite
 
-# Examples:
-./scripts/run_tests.sh --server 192.168.1.100 --verbose
-./scripts/run_tests.sh --server localhost --filter "RpcNull*"
-./scripts/run_tests.sh --list-tests
+# 运行特定测试
+./tests/test_nfs3_suite --gtest_filter="RpcNullTest.*"
 
-# Or manually
-cd build
+# 连接到指定 NFS 服务器
 ./tests/test_nfs3_suite --server=192.168.1.100 --port=2049
 ```
 
-## 📁 Project Structure
+## 项目结构
 
 ```
 nfs3_rpc_tests/
-├── CMakeLists.txt                 # Top-level CMake config
-├── cmake/
-│   └── FindTirpc.cmake            # libtirpc finder module
 ├── include/nfs3/
-│   ├── xdr_codec.hpp              # XDR buffer template class
-│   ├── rpc_endpoint.hpp           # RPC connection manager (PIMPL)
-│   ├── nfs3_client.hpp            # 22 NFSv3 procedure APIs
-│   ├── test_context.hpp           # GTest fixture with lifecycle
-│   ├── nfs3_types.hpp             # All RFC 1813 data structures
-│   ├── nfs3_constants.hpp         # Enums, constants, error codes
-│   └── detail/
-│       └── xdr_primitive.hpp      # Byte-order conversion helpers
+│   ├── xdr_codec.hpp        # XDR 编解码器
+│   ├── nfs3_types.hpp       # RFC 1813 数据结构
+│   ├── nfs3_constants.hpp   # 程序号、版本号、错误码
+│   ├── rpc_endpoint.hpp     # RPC 连接管理
+│   ├── nfs3_client.hpp      # 22 个 NFSv3 过程 API
+│   └── test_context.hpp     # GTest Fixture
 ├── src/
-│   ├── xdr_codec.cpp              # XDR codec implementation
-│   ├── rpc_endpoint.cpp           # RPCEndpoint (libtirpc wrapper)
-│   ├── nfs3_client.cpp            # NFS3TestClient implementation
-│   ├── test_context.cpp           # TestContext implementation
-│   └── detail/
-│       └── xdr_primitive.cpp      # Byte-order helpers
+│   ├── xdr_codec.cpp
+│   ├── rpc_endpoint.cpp
+│   ├── nfs3_client.cpp
+│   └── test_context.cpp
 ├── tests/
-│   ├── CMakeLists.txt
-│   ├── test_main.cpp              # GTest entry point
-│   ├── test_rpc_null.cpp          # NULL procedure tests
-│   ├── test_rpc_errors.cpp        # RPC error handling tests
-│   ├── test_nfs3_getattr.cpp      # GETATTR/SETATTR tests
-│   ├── test_nfs3_lookup.cpp       # LOOKUP tests
-│   ├── test_nfs3_readwrite.cpp    # READ/WRITE tests
-│   ├── test_nfs3_create.cpp       # CREATE/MKDIR tests
-│   ├── test_nfs3_remove.cpp       # REMOVE/RMDIR tests
-│   ├── test_nfs3_readdir.cpp      # READDIR/READDIRPLUS tests
-│   ├── test_nfs3_other.cpp        # ACCESS/LINK/RENAME/etc.
-│   └── test_nfs3_stress.cpp       # Boundary & stress tests
-├── scripts/
-│   └── run_tests.sh               # Test runner script
-└── README.md                      # This file
+│   ├── test_xdr.cpp         # XDR 编解码单元测试
+│   ├── test_rpc_null.cpp    # NULL 过程测试
+│   ├── test_rpc_errors.cpp  # RPC 错误处理测试
+│   ├── test_nfs3_getattr.cpp
+│   ├── test_nfs3_lookup.cpp
+│   ├── test_nfs3_readwrite.cpp
+│   ├── test_nfs3_create.cpp
+│   ├── test_nfs3_remove.cpp
+│   ├── test_nfs3_readdir.cpp
+│   ├── test_nfs3_other.cpp
+│   └── test_nfs3_stress.cpp
+└── scripts/
+    └── run_tests.sh
 ```
 
-## 🎯 Test Coverage
+## API 使用示例
 
-### RPC Layer Tests
-| Test File | Tests | Coverage |
-|-----------|-------|----------|
-| `test_rpc_null` | 4 | NULL procedure, sequential/concurrent requests |
-| `test_rpc_errors` | 5 | Invalid version, program, procedure errors |
-
-### NFSv3 Operation Tests
-| Test File | Tests | Procedures |
-|-----------|-------|-----------|
-| `test_nfs3_getattr` | 5 | GETATTR (1), SETATTR (2) |
-| `test_nfs3_lookup` | 6 | LOOKUP (3) |
-| `test_nfs3_readwrite` | 8 | READ (6), WRITE (7) |
-| `test_nfs3_create` | 7 | CREATE (8), MKDIR (9) |
-| `test_nfs3_remove` | 5 | REMOVE (12), RMDIR (13) |
-| `test_nfs3_readdir` | 6 | READDIR (16), READDIRPLUS (17) |
-| `test_nfs3_other` | 11 | ACCESS, SYMLINK, MKNOD, RENAME, FSSTAT, etc. |
-
-### Stress & Edge Cases
-| Test File | Tests | Focus |
-|-----------|-------|-------|
-| `test_nfs3_stress` | 6 | Filename boundaries, concurrency, idempotency |
-
-**Total: 10 test suites, 63 test cases covering all 22 NFSv3 procedures**
-
-## 💡 Design Decisions
-
-### Why Hand-written XDR instead of rpcgen?
-
-| Aspect | rpcgen | Hand-written C++ |
-|--------|--------|------------------|
-| **Dependencies** | Requires rpcgen tool + .x files | ✅ Zero extra deps |
-| **Type Safety** | C-style void* | ✅ Strong typing |
-| **Memory Management** | Manual malloc/free | ✅ RAII automatic |
-| **Debugging** | Macro-expanded code | ✅ Template debugging |
-| **Maintainability** | Dual source (.x + generated) | ✅ Single source truth |
-
-For a client-only project with fixed protocol version, hand-written XDR provides better long-term maintainability.
-
-### Why libtirpc?
-
-- Standard RPC library on modern Linux
-- Provides socket-level API (`clnt_create`, `clnt_call`)
-- Handles authentication, fragmentation, retransmission
-- Only external runtime dependency required
-
-## 🔬 API Example
+### 基本连接
 
 ```cpp
 #include "nfs3/nfs3_client.hpp"
+#include "nfs3/rpc_endpoint.hpp"
 
-int main() {
-    auto endpoint = nfs3::RPCEndpoint::create("192.168.1.100", 2049);
-    
-    if (!endpoint.is_connected()) {
-        return 1;
-    }
-    
-    nfs3::NFS3TestClient client(std::move(endpoint));
-    
-    // NULL procedure test
-    auto result = client.null();
-    if (!result) { /* handle error */ }
-    
-    // GETATTR on root
-    nfs3::nfs_fh3 root; // zero-length or MOUNT-acquired
-    auto attr_result = client.getattr(root);
-    if (attr_result) {
-        auto& attrs = attr_result->obj_attributes;
-        printf("Root type: %u\n", static_cast<uint32_t>(attrs.type_));
-    }
-    
-    return 0;
+// 创建 RPC 连接
+auto endpoint = nfs3::RPCEndpoint::create("192.168.1.100", 2049);
+if (!endpoint.is_connected()) {
+    std::cerr << "连接失败\n";
+    return 1;
+}
+
+// 创建客户端
+nfs3::NFS3TestClient client(std::move(endpoint));
+
+// 调用 NULL 过程
+auto result = client.null();
+if (result.has_value()) {
+    std::cout << "NFS NULL 成功\n";
 }
 ```
 
-## ⚙️ Configuration Options
+### GETATTR 示例
 
-### CMake Options
-| Option | Default | Description |
-|--------|---------|-------------|
-| `BUILD_TESTS` | ON | Enable test compilation |
-| `CMAKE_BUILD_TYPE` | Debug | Debug/Release mode |
+```cpp
+nfs3::nfs_fh3 file_handle;
+file_handle.data = {0x01, 0x02, 0x03, 0x04};  // 从服务器获取
 
-### Runtime Options
-| Option | Flag | Description |
-|--------|------|-------------|
-| Server address | `--server=<host>` | Required (or set `NFS_TEST_SERVER`) |
-| Port | `--port=<port>` | Default 2049 (or set `NFS_TEST_PORT`) |
-| Verbose | `--verbose` | Detailed output |
-| Filter | `--filter=<pattern>` | GTest filter pattern |
+auto attr_result = client.getattr(file_handle);
+if (attr_result.has_value()) {
+    const auto& attrs = attr_result.value();
+    std::cout << "文件大小: " << attrs.obj_attributes.size << "\n";
+    std::cout << "类型: " << static_cast<int>(attrs.obj_attributes.type_) << "\n";
+}
+```
 
-## 🧪 Testing Without Real NFS Server
+### LOOKUP 示例
 
-The framework is designed for integration testing against real NFSv3 servers. However:
+```cpp
+auto lookup_result = client.lookup(dir_handle, "filename.txt");
+if (lookup_result.has_value()) {
+    auto file_handle = lookup_result->object;
+    std::cout << "找到文件，句柄长度: " << file_handle.data.size() << "\n";
+}
+```
 
-- **XDR Unit Tests**: Can test encoding/decoding in isolation
-- **Mock Testing**: Can mock `RPCEndpoint` for unit testing logic
-- **Stubs**: Current stubs return errors when no server available
+### READ/WRITE 示例
 
-To run full tests, you need access to an NFSv3 server (Linux NFS kernel server, user-space server, etc.)
+```cpp
+// 读取文件
+auto read_result = client.read(file_handle, 0, 4096);
+if (read_result.has_value()) {
+    const auto& data = read_result->data;
+    std::cout << "读取 " << data.size() << " 字节\n";
+}
 
-## 📊 Quality Metrics (Target)
+// 写入文件
+nfs3::bytes write_data = {'H', 'e', 'l', 'l', 'o'};
+auto write_result = client.write(file_handle, 0, nfs3::stable_how::FILE_SYNC, write_data);
+if (write_result.has_value()) {
+    std::cout << "写入 " << write_result->count << " 字节\n";
+}
+```
 
-| Metric | Target | Verification |
-|--------|--------|--------------|
-| Build time | < 30 sec | Single-threaded debug |
-| Test execution | < 5 min | LAN environment |
-| Code coverage | > 80% | Key paths 100% |
-| Memory leaks | None | valgrind clean |
-| Warnings | Zero | `-Wall -Wextra -Wpedantic` |
+## 测试覆盖
 
-## 🤝 Contributing
+| 类别 | 测试数量 | 说明 |
+|------|----------|------|
+| XDR 编解码 | 3 | 基础类型、NFS 结构、RPC 参数 |
+| NULL 过程 | 4 | 基本调用、连接验证、多次调用 |
+| RPC 错误 | 5 | 连接拒绝、超时、认证错误 |
+| GETATTR | 5 | 参数/响应 XDR 往返 |
+| LOOKUP | 6 | 参数/响应 XDR 往返 |
+| READ/WRITE | 9 | 参数/响应 XDR 往返 |
+| CREATE | 7 | UNCHECKED/GUARDED/EXCLUSIVE 模式 |
+| REMOVE | 8 | 文件删除、目录删除 |
+| READDIR | 10 | 目录枚举、FSSTAT/FSINFO |
+| 其他操作 | 16 | SETATTR/ACCESS/LINK/RENAME 等 |
+| 压力测试 | 6 | 大数据量、并行、1000 次往返 |
 
-1. Follow existing code style (C++17)
-2. Add tests for new features
-3. Update this README for API changes
-4. Ensure zero compiler warnings
+**总计：76 个测试用例**
 
-## 📄 License
+## XDR 编解码器
 
-This project is provided as-is for educational and testing purposes.
+手写 XDR 编解码器支持：
 
----
+- 基础类型：`int32_t`, `uint32_t`, `uint64_t`, `bool`
+- 变长类型：`std::string`, `std::vector<uint8_t>`
+- 复合类型：结构体、可选值 (`std::optional`)
+- 网络字节序转换
 
-**Note**: This test suite targets RFC 1813 (NFS version 3 protocol specification). For production use, consider established tools like `cthon-nfs-tests` or `nfstest`.
+```cpp
+nfs3::xdr::XdrBuffer buf;
+
+// 编码
+buf.pack(my_nfs_structure);
+
+// 获取字节
+auto bytes = buf.data();
+
+// 解码
+nfs3::xdr::XdrBuffer back(bytes);
+MyStruct restored;
+back.unpack(restored);
+```
+
+## 错误处理
+
+所有 API 使用 `std::expected<T, E>` 返回结果：
+
+```cpp
+auto result = client.getattr(handle);
+if (!result.has_value()) {
+    nfs3::Nfs3Error error = result.error();
+    // 处理错误
+}
+```
+
+## 容器环境限制
+
+在容器中运行 NFS 测试有以下限制：
+
+1. **无法 mount 文件系统**：缺少 `CAP_SYS_ADMIN`
+2. **Ganesha VFS 不可用**：overlay 文件系统不支持 `open_by_handle_at`
+3. **内核 NFS 服务器不可用**：无法访问 `/proc/fs/nfsd`
+
+解决方案：
+- 使用特权容器 (`--privileged`)
+- 使用物理机或虚拟机
+- 使用 NULL FSAL 测试 RPC 协议层
+
+## 许可证
+
+MIT License
+
+## 参考
+
+- [RFC 1813 - NFS Version 3 Protocol Specification](https://tools.ietf.org/html/rfc1813)
+- [libtirpc Documentation](https://docs.oracle.com/cd/E36784_01/html/E36880/tirpc-3nsl.html)
