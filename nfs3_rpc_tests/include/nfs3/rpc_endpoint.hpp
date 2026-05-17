@@ -5,6 +5,7 @@
 #include <chrono>
 #include <vector>
 #include <cstring>
+#include <iostream>
 #include <arpa/inet.h>
 
 #include "nfs3/xdr_codec.hpp"
@@ -12,7 +13,19 @@
 
 #ifdef HAVE_LIBTIRPC
 #include <rpc/rpc.h>
-#endif
+
+namespace nfs3 {
+
+struct xdr_raw_data {
+    char* data;
+    u_int len;
+};
+
+static bool_t xdr_raw_wrapper(XDR* xdrs, xdr_raw_data* obj) {
+    return xdr_opaque(xdrs, obj->data, obj->len);
+}
+
+}
 
 namespace nfs3 {
 
@@ -88,27 +101,35 @@ public:
         req_buf.pack(args);
         auto req_bytes = req_buf.data();
         
-        std::vector<char> req_data(req_bytes.begin(), req_bytes.end());
-        char* req_ptr = req_data.data();
-        u_int req_len = req_data.size();
-        
-        std::vector<char> resp_data(65536, 0);
-        char* resp_ptr = resp_data.data();
-        u_int resp_len = 65536;
-        
         struct timeval timeout_tv;
         timeout_tv.tv_sec = impl_->timeout_.count() / 1000;
         timeout_tv.tv_usec = (impl_->timeout_.count() % 1000) * 1000;
         
+        std::vector<char> resp_buffer(65536);
+        
+        xdr_raw_data in_data;
+        in_data.data = reinterpret_cast<char*>(const_cast<uint8_t*>(req_bytes.data()));
+        in_data.len = req_bytes.size();
+        
+        xdr_raw_data out_data;
+        out_data.data = resp_buffer.data();
+        out_data.len = resp_buffer.size();
+        
         enum clnt_stat result = clnt_call(
             impl_->client_,
             proc_num,
-            reinterpret_cast<xdrproc_t>(xdr_bytes),
-            reinterpret_cast<char*>(&req_ptr),
-            reinterpret_cast<xdrproc_t>(xdr_bytes),
-            reinterpret_cast<char*>(&resp_ptr),
+            (xdrproc_t)xdr_raw_wrapper,
+            (caddr_t)&in_data,
+            (xdrproc_t)xdr_raw_wrapper,
+            (caddr_t)&out_data,
             timeout_tv
         );
+        
+        if (result != RPC_SUCCESS) {
+            std::cerr << "RPC call failed, proc=" << proc_num 
+                      << ", status=" << static_cast<int>(result)
+                      << ", msg=" << clnt_sperrno(result) << std::endl;
+        }
         
         switch (result) {
             case RPC_SUCCESS: break;
@@ -120,8 +141,8 @@ public:
         }
         
         if constexpr (!std::is_same_v<ResType, void>) {
-            std::vector<uint8_t> resp_bytes(resp_ptr, resp_ptr + resp_len);
-            xdr::XdrBuffer resp_buf(resp_bytes);
+            std::vector<uint8_t> data(out_data.data, out_data.data + out_data.len);
+            xdr::XdrBuffer resp_buf(data);
             ResType response;
             resp_buf.unpack(response);
             return response;
@@ -189,4 +210,6 @@ private:
     std::unique_ptr<RPCEndpointImpl> impl_;
 };
 
-} 
+}
+
+#endif 

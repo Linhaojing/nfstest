@@ -32,6 +32,7 @@ if(TIRPC_FOUND)
         src/rpc_endpoint.cpp
         src/nfs3_client.cpp
         src/test_context.cpp
+        src/mount_client.cpp
     )
     
     target_include_directories(nfs3_test_core PUBLIC

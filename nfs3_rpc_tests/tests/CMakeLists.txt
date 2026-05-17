@@ -10,6 +10,7 @@ add_executable(test_nfs3_suite
     test_nfs3_readdir.cpp
     test_nfs3_other.cpp
     test_nfs3_stress.cpp
+    test_real_rpc.cpp
 )
 
 target_link_libraries(test_nfs3_suite PRIVATE

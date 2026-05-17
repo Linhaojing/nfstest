@@ -29,7 +29,7 @@ RPCEndpoint RPCEndpoint::create(const std::string& host, uint16_t port, std::chr
     }
     
     auth_destroy(endpoint.impl_->client_->cl_auth);
-    endpoint.impl_->client_->cl_auth = authnone_create();
+    endpoint.impl_->client_->cl_auth = authunix_create_default();
     
     return endpoint;
 }
