@@ -1,0 +1,91 @@
+#pragma once
+
+#include <cstdint>
+
+namespace nfs3 {
+
+constexpr uint32_t NFS_PROGRAM = 100003;
+constexpr uint32_t NFS_V3 = 3;
+
+enum class nfsstat3 : uint32_t {
+    NFS3_OK = 0,
+    NFS3ERR_PERM = 1,
+    NFS3ERR_NOENT = 2,
+    NFS3ERR_IO = 5,
+    NFS3ERR_NXIO = 6,
+    NFS3ERR_ACCES = 13,
+    NFS3ERR_EXIST = 17,
+    NFS3ERR_XDEV = 18,
+    NFS3ERR_NODEV = 19,
+    NFS3ERR_NOTDIR = 20,
+    NFS3ERR_ISDIR = 21,
+    NFS3ERR_INVAL = 22,
+    NFS3ERR_FBIG = 27,
+    NFS3ERR_NOSPC = 28,
+    NFS3ERR_ROFS = 30,
+    NFS3ERR_MLINK = 31,
+    NFS3ERR_NAMETOOLONG = 63,
+    NFS3ERR_NOTEMPTY = 66,
+    NFS3ERR_DQUOT = 69,
+    NFS3ERR_STALE = 70,
+    NFS3ERR_REMOTE = 71,
+    NFS3ERR_BADHANDLE = 10001,
+    NFS3ERR_NOT_SYNC = 10002,
+    NFS3ERR_BAD_COOKIE = 10003,
+    NFS3ERR_NOTSUPP = 10004,
+    NFS3ERR_TOOSMALL = 10005,
+    NFS3ERR_SERVERFAULT = 10006,
+    NFS3ERR_BADTYPE = 10007,
+    NFS3ERR_JUKEBOX = 10008
+};
+
+enum class ftype3 : uint32_t {
+    NF3NON = 0,
+    NF3REG = 1,
+    NF3DIR = 2,
+    NF3BLK = 3,
+    NF3CHR = 4,
+    NF3LNK = 5,
+    NF3SOCK = 6,
+    NF3FIFO = 7
+};
+
+enum class stable_how : uint32_t {
+    UNSTABLE = 0,
+    DATA_SYNC = 1,
+    FILE_SYNC = 2
+};
+
+enum class proc_num : uint32_t {
+    NFSPROC3_NULL = 0,
+    NFSPROC3_GETATTR = 1,
+    NFSPROC3_SETATTR = 2,
+    NFSPROC3_LOOKUP = 3,
+    NFSPROC3_ACCESS = 4,
+    NFSPROC3_READLINK = 5,
+    NFSPROC3_READ = 6,
+    NFSPROC3_WRITE = 7,
+    NFSPROC3_CREATE = 8,
+    NFSPROC3_MKDIR = 9,
+    NFSPROC3_SYMLINK = 10,
+    NFSPROC3_MKNOD = 11,
+    NFSPROC3_REMOVE = 12,
+    NFSPROC3_RMDIR = 13,
+    NFSPROC3_RENAME = 14,
+    NFSPROC3_LINK = 15,
+    NFSPROC3_READDIR = 16,
+    NFSPROC3_READDIRPLUS = 17,
+    NFSPROC3_FSSTAT = 18,
+    NFSPROC3_FSINFO = 19,
+    NFSPROC3_PATHCONF = 20,
+    NFSPROC3_COMMIT = 21
+};
+
+constexpr uint32_t NFS3_ACCESS_READ = 0x0001;
+constexpr uint32_t NFS3_ACCESS_LOOKUP = 0x0002;
+constexpr uint32_t NFS3_ACCESS_MODIFY = 0x0004;
+constexpr uint32_t NFS3_ACCESS_EXTEND = 0x0008;
+constexpr uint32_t NFS3_ACCESS_DELETE = 0x0010;
+constexpr uint32_t NFS3_ACCESS_EXECUTE = 0x0020;
+
+} 

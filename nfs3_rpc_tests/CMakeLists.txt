@@ -1,0 +1,74 @@
+cmake_minimum_required(VERSION 2.8)
+project(nfs3_rpc_tests LANGUAGES CXX)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++23 -Wall -Wextra -Wpedantic")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -DDEBUG")
+else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -DNDEBUG")
+endif()
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+
+find_package(PkgConfig)
+find_package(Tirpc)
+
+option(BUILD_TESTS "Build unit tests" ON)
+
+add_library(nfs3_test_core STATIC
+    src/xdr_codec.cpp
+    src/detail/xdr_primitive.cpp
+)
+
+target_include_directories(nfs3_test_core PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+target_compile_features(nfs3_test_core PUBLIC cxx_std_17)
+
+if(TIRPC_FOUND)
+    target_sources(nfs3_test_core PRIVATE
+        src/rpc_endpoint.cpp
+        src/nfs3_client.cpp
+        src/test_context.cpp
+    )
+    
+    target_include_directories(nfs3_test_core PUBLIC
+        ${TIRPC_INCLUDE_DIRS}
+    )
+    
+    target_link_libraries(nfs3_test_core PUBLIC
+        ${TIRPC_LIBRARIES}
+        pthread
+    )
+    
+    add_definitions(-DHAVE_LIBTIRPC=1)
+    message(STATUS "libtirpc found, RPC support enabled")
+else()
+    message(WARNING "libtirpc not found, building without RPC support (XDR codec only)")
+endif()
+
+if(BUILD_TESTS)
+    enable_testing()
+    find_package(GTest QUIET)
+    
+    if(NOT GTest_FOUND)
+        message(STATUS "GTest not found, tests will be disabled")
+        set(BUILD_TESTS OFF)
+    else()
+        add_subdirectory(tests)
+    endif()
+endif()
+
+option(BUILD_EXAMPLES "Build example programs" ON)
+
+if(BUILD_EXAMPLES AND TIRPC_FOUND)
+    add_executable(example_basic_connect examples/basic_connect.cpp)
+    target_link_libraries(example_basic_connect nfs3_test_core)
+    
+    add_executable(example_nfs_operations examples/nfs_operations.cpp)
+    target_link_libraries(example_nfs_operations nfs3_test_core)
+    
+    message(STATUS "Examples will be built")
+endif()
