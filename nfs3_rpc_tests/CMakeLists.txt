@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.14)
 project(nfs3_rpc_tests LANGUAGES CXX)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++23 -Wall -Wextra -Wpedantic")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall -Wextra -Wpedantic")
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -DDEBUG")
@@ -54,11 +54,18 @@ if(BUILD_TESTS)
     find_package(GTest QUIET)
     
     if(NOT GTest_FOUND)
-        message(STATUS "GTest not found, tests will be disabled")
-        set(BUILD_TESTS OFF)
-    else()
-        add_subdirectory(tests)
+        message(STATUS "GTest not found, fetching via FetchContent")
+        include(FetchContent)
+        FetchContent_Declare(
+            googletest
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            GIT_TAG v1.14.0
+        )
+        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(googletest)
     endif()
+    
+    add_subdirectory(tests)
 endif()
 
 option(BUILD_EXAMPLES "Build example programs" ON)

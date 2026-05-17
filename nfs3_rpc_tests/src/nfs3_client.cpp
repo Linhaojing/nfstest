@@ -5,19 +5,19 @@ namespace nfs3 {
 NFS3TestClient::NFS3TestClient(RPCEndpoint endpoint)
     : endpoint_(std::move(endpoint)) {}
 
-std::expected<void, Nfs3Error> NFS3TestClient::null() {
+expected<void, Nfs3Error> NFS3TestClient::null() {
     auto result = endpoint_.call_void<void>(
         static_cast<uint32_t>(proc_num::NFSPROC3_NULL)
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     return {};
 }
 
-std::expected<GETATTR3resok, Nfs3Error> NFS3TestClient::getattr(const nfs_fh3& object) {
+expected<GETATTR3resok, Nfs3Error> NFS3TestClient::getattr(const nfs_fh3& object) {
     GETATTR3args args{object};
     auto result = endpoint_.call<GETATTR3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_GETATTR),
@@ -25,21 +25,21 @@ std::expected<GETATTR3resok, Nfs3Error> NFS3TestClient::getattr(const nfs_fh3& o
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<SETATTR3resok, Nfs3Error> NFS3TestClient::setattr(
+expected<SETATTR3resok, Nfs3Error> NFS3TestClient::setattr(
     const nfs_fh3& object,
     const sattr3& new_attributes) {
     
@@ -50,21 +50,21 @@ std::expected<SETATTR3resok, Nfs3Error> NFS3TestClient::setattr(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<LOOKUP3resok, Nfs3Error> NFS3TestClient::lookup(
+expected<LOOKUP3resok, Nfs3Error> NFS3TestClient::lookup(
     const nfs_fh3& dir,
     std::string_view name) {
     
@@ -75,21 +75,21 @@ std::expected<LOOKUP3resok, Nfs3Error> NFS3TestClient::lookup(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<ACCESS3resok, Nfs3Error> NFS3TestClient::access(
+expected<ACCESS3resok, Nfs3Error> NFS3TestClient::access(
     const nfs_fh3& object,
     uint32_t access_mask) {
     
@@ -100,21 +100,21 @@ std::expected<ACCESS3resok, Nfs3Error> NFS3TestClient::access(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<READLINK3resok, Nfs3Error> NFS3TestClient::readlink(const nfs_fh3& symlink) {
+expected<READLINK3resok, Nfs3Error> NFS3TestClient::readlink(const nfs_fh3& symlink) {
     READLINK3args args{symlink};
     auto result = endpoint_.call<READLINK3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_READLINK),
@@ -122,21 +122,21 @@ std::expected<READLINK3resok, Nfs3Error> NFS3TestClient::readlink(const nfs_fh3&
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<READ3resok, Nfs3Error> NFS3TestClient::read(
+expected<READ3resok, Nfs3Error> NFS3TestClient::read(
     const nfs_fh3& file,
     uint64_t offset,
     uint32_t count) {
@@ -148,21 +148,21 @@ std::expected<READ3resok, Nfs3Error> NFS3TestClient::read(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<WRITE3resok, Nfs3Error> NFS3TestClient::write(
+expected<WRITE3resok, Nfs3Error> NFS3TestClient::write(
     const nfs_fh3& file,
     uint64_t offset,
     stable_how stable,
@@ -175,21 +175,21 @@ std::expected<WRITE3resok, Nfs3Error> NFS3TestClient::write(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<CREATE3resok, Nfs3Error> NFS3TestClient::create(
+expected<CREATE3resok, Nfs3Error> NFS3TestClient::create(
     const nfs_fh3& dir,
     std::string_view name,
     createmode3 mode,
@@ -209,21 +209,21 @@ std::expected<CREATE3resok, Nfs3Error> NFS3TestClient::create(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<MKDIR3resok, Nfs3Error> NFS3TestClient::mkdir(
+expected<MKDIR3resok, Nfs3Error> NFS3TestClient::mkdir(
     const nfs_fh3& dir,
     std::string_view name,
     const sattr3& attributes) {
@@ -235,21 +235,21 @@ std::expected<MKDIR3resok, Nfs3Error> NFS3TestClient::mkdir(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<SYMLINK3resok, Nfs3Error> NFS3TestClient::symlink(
+expected<SYMLINK3resok, Nfs3Error> NFS3TestClient::symlink(
     const nfs_fh3& dir,
     std::string_view name,
     const sattr3& attributes,
@@ -262,21 +262,21 @@ std::expected<SYMLINK3resok, Nfs3Error> NFS3TestClient::symlink(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<MKNOD3resok, Nfs3Error> NFS3TestClient::mknod(
+expected<MKNOD3resok, Nfs3Error> NFS3TestClient::mknod(
     const nfs_fh3& dir,
     std::string_view name,
     ftype4 type,
@@ -289,21 +289,21 @@ std::expected<MKNOD3resok, Nfs3Error> NFS3TestClient::mknod(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<REMOVE3resok, Nfs3Error> NFS3TestClient::remove(
+expected<REMOVE3resok, Nfs3Error> NFS3TestClient::remove(
     const nfs_fh3& dir,
     std::string_view name) {
     
@@ -314,21 +314,21 @@ std::expected<REMOVE3resok, Nfs3Error> NFS3TestClient::remove(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<RMDIR3resok, Nfs3Error> NFS3TestClient::rmdir(
+expected<RMDIR3resok, Nfs3Error> NFS3TestClient::rmdir(
     const nfs_fh3& dir,
     std::string_view name) {
     
@@ -339,21 +339,21 @@ std::expected<RMDIR3resok, Nfs3Error> NFS3TestClient::rmdir(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<RENAME3resok, Nfs3Error> NFS3TestClient::rename_op(
+expected<RENAME3resok, Nfs3Error> NFS3TestClient::rename_op(
     const nfs_fh3& from_dir,
     std::string_view from_name,
     const nfs_fh3& to_dir,
@@ -372,21 +372,21 @@ std::expected<RENAME3resok, Nfs3Error> NFS3TestClient::rename_op(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<LINK3resok, Nfs3Error> NFS3TestClient::link(
+expected<LINK3resok, Nfs3Error> NFS3TestClient::link(
     const nfs_fh3& file,
     const nfs_fh3& link_dir,
     std::string_view link_name) {
@@ -398,21 +398,21 @@ std::expected<LINK3resok, Nfs3Error> NFS3TestClient::link(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<READDIR3resok, Nfs3Error> NFS3TestClient::readdir(
+expected<READDIR3resok, Nfs3Error> NFS3TestClient::readdir(
     const nfs_fh3& dir,
     uint64_t cookie,
     uint64_t cookieverf,
@@ -425,21 +425,21 @@ std::expected<READDIR3resok, Nfs3Error> NFS3TestClient::readdir(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return std::move(result->resok.value());
 }
 
-std::expected<READDIRPLUS3resok, Nfs3Error> NFS3TestClient::readdirplus(
+expected<READDIRPLUS3resok, Nfs3Error> NFS3TestClient::readdirplus(
     const nfs_fh3& dir,
     uint64_t cookie,
     uint64_t cookieverf,
@@ -453,21 +453,21 @@ std::expected<READDIRPLUS3resok, Nfs3Error> NFS3TestClient::readdirplus(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return std::move(result->resok.value());
 }
 
-std::expected<FSSTAT3resok, Nfs3Error> NFS3TestClient::fsstat(const nfs_fh3& fsroot) {
+expected<FSSTAT3resok, Nfs3Error> NFS3TestClient::fsstat(const nfs_fh3& fsroot) {
     FSSTAT3args args{fsroot};
     auto result = endpoint_.call<FSSTAT3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_FSSTAT),
@@ -475,21 +475,21 @@ std::expected<FSSTAT3resok, Nfs3Error> NFS3TestClient::fsstat(const nfs_fh3& fsr
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<FSINFO3resok, Nfs3Error> NFS3TestClient::fsinfo(const nfs_fh3& fsroot) {
+expected<FSINFO3resok, Nfs3Error> NFS3TestClient::fsinfo(const nfs_fh3& fsroot) {
     FSINFO3args args{fsroot};
     auto result = endpoint_.call<FSINFO3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_FSINFO),
@@ -497,21 +497,21 @@ std::expected<FSINFO3resok, Nfs3Error> NFS3TestClient::fsinfo(const nfs_fh3& fsr
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<PATHCONF3resok, Nfs3Error> NFS3TestClient::pathconf(const nfs_fh3& object) {
+expected<PATHCONF3resok, Nfs3Error> NFS3TestClient::pathconf(const nfs_fh3& object) {
     PATHCONF3args args{object};
     auto result = endpoint_.call<PATHCONF3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_PATHCONF),
@@ -519,21 +519,21 @@ std::expected<PATHCONF3resok, Nfs3Error> NFS3TestClient::pathconf(const nfs_fh3&
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();
 }
 
-std::expected<COMMIT3resok, Nfs3Error> NFS3TestClient::commit(
+expected<COMMIT3resok, Nfs3Error> NFS3TestClient::commit(
     const nfs_fh3& file,
     uint64_t offset,
     uint32_t count) {
@@ -545,16 +545,16 @@ std::expected<COMMIT3resok, Nfs3Error> NFS3TestClient::commit(
     );
     
     if (!result) {
-        return std::unexpected(Nfs3Error::RPC_ERROR);
+        return unexpected(Nfs3Error::RPC_ERROR);
     }
 
     
     if (result->status != nfsstat3::NFS3_OK) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     if (!result->resok.has_value()) {
-        return std::unexpected(Nfs3Error::SERVERFAULT);
+        return unexpected(Nfs3Error::SERVERFAULT);
     }
     
     return result->resok.value();

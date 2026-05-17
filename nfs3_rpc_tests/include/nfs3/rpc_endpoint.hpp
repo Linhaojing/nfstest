@@ -3,12 +3,12 @@
 #include <string>
 #include <memory>
 #include <chrono>
-#include <expected>
 #include <vector>
 #include <cstring>
 #include <arpa/inet.h>
 
 #include "nfs3/xdr_codec.hpp"
+#include "nfs3/expected.hpp"
 
 #ifdef HAVE_LIBTIRPC
 #include <rpc/rpc.h>
@@ -73,13 +73,13 @@ public:
     RPCEndpoint& operator=(RPCEndpoint&& other) noexcept;
     
     template<typename ResType, typename ArgsType>
-    std::expected<ResType, RpcError> call(
+    expected<ResType, RpcError> call(
         uint32_t proc_num,
         const ArgsType& args
     ) {
 #ifdef HAVE_LIBTIRPC
         if (!is_connected()) {
-            return std::unexpected(RpcError::CONNECTION_FAILED);
+            return unexpected(RpcError::CONNECTION_FAILED);
         }
         
         impl_->xid_counter_++;
@@ -112,11 +112,11 @@ public:
         
         switch (result) {
             case RPC_SUCCESS: break;
-            case RPC_TIMEDOUT: return std::unexpected(RpcError::TIMEOUT);
-            case RPC_PROGUNAVAIL: return std::unexpected(RpcError::PROG_UNAVAIL);
-            case RPC_VERSMISMATCH: return std::unexpected(RpcError::PROG_MISMATCH);
-            case RPC_PROCUNAVAIL: return std::unexpected(RpcError::PROC_UNAVAIL);
-            default: return std::unexpected(RpcError::UNKNOWN);
+            case RPC_TIMEDOUT: return unexpected(RpcError::TIMEOUT);
+            case RPC_PROGUNAVAIL: return unexpected(RpcError::PROG_UNAVAIL);
+            case RPC_VERSMISMATCH: return unexpected(RpcError::PROG_MISMATCH);
+            case RPC_PROCUNAVAIL: return unexpected(RpcError::PROC_UNAVAIL);
+            default: return unexpected(RpcError::UNKNOWN);
         }
         
         if constexpr (!std::is_same_v<ResType, void>) {
@@ -131,15 +131,15 @@ public:
 #else
         (void)proc_num;
         (void)args;
-        return std::unexpected(RpcError::CONNECTION_FAILED);
+        return unexpected(RpcError::CONNECTION_FAILED);
 #endif
     }
     
     template<typename ResType>
-    std::expected<ResType, RpcError> call_void(uint32_t proc_num) {
+    expected<ResType, RpcError> call_void(uint32_t proc_num) {
 #ifdef HAVE_LIBTIRPC
         if (!is_connected()) {
-            return std::unexpected(RpcError::CONNECTION_FAILED);
+            return unexpected(RpcError::CONNECTION_FAILED);
         }
         
         impl_->xid_counter_++;
@@ -160,11 +160,11 @@ public:
         
         switch (result) {
             case RPC_SUCCESS: break;
-            case RPC_TIMEDOUT: return std::unexpected(RpcError::TIMEOUT);
-            case RPC_PROGUNAVAIL: return std::unexpected(RpcError::PROG_UNAVAIL);
-            case RPC_VERSMISMATCH: return std::unexpected(RpcError::PROG_MISMATCH);
-            case RPC_PROCUNAVAIL: return std::unexpected(RpcError::PROC_UNAVAIL);
-            default: return std::unexpected(RpcError::UNKNOWN);
+            case RPC_TIMEDOUT: return unexpected(RpcError::TIMEOUT);
+            case RPC_PROGUNAVAIL: return unexpected(RpcError::PROG_UNAVAIL);
+            case RPC_VERSMISMATCH: return unexpected(RpcError::PROG_MISMATCH);
+            case RPC_PROCUNAVAIL: return unexpected(RpcError::PROC_UNAVAIL);
+            default: return unexpected(RpcError::UNKNOWN);
         }
         
         if constexpr (!std::is_same_v<ResType, void>) {
@@ -175,7 +175,7 @@ public:
         }
 #else
         (void)proc_num;
-        return std::unexpected(RpcError::CONNECTION_FAILED);
+        return unexpected(RpcError::CONNECTION_FAILED);
 #endif
     }
     
