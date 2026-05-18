@@ -16,24 +16,52 @@
 
 namespace nfs3 {
 
-struct xdr_bytes_args {
-    char* ptr;
+struct xdr_nfs_data {
+    char* data;
     u_int len;
+    u_int max_len;
 };
 
-static bool_t xdr_bytes_wrapper(XDR* xdrs, xdr_bytes_args* obj) {
-    char* ptr = obj->ptr;
-    u_int len = obj->len;
-    if (xdrs->x_op == XDR_DECODE) {
-        std::cerr << "XDR_DECODE: ptr=" << (void*)ptr << ", len=" << len << std::endl;
+static bool_t xdr_nfs_opaque(XDR* xdrs, xdr_nfs_data* obj) {
+    if (xdrs->x_op == XDR_ENCODE) {
+        if (!xdr_opaque(xdrs, obj->data, obj->len)) {
+            return FALSE;
+        }
+        return TRUE;
+    } else if (xdrs->x_op == XDR_DECODE) {
+        u_int actual_len = xdr_getpos(xdrs);
+        if (actual_len > obj->max_len) {
+            actual_len = obj->max_len;
+        }
+        if (!xdr_opaque(xdrs, obj->data, actual_len)) {
+            return FALSE;
+        }
+        obj->len = actual_len;
+        return TRUE;
     }
-    bool_t result = xdr_bytes(xdrs, &ptr, &len, 65536);
-    if (xdrs->x_op == XDR_DECODE) {
-        std::cerr << "XDR_DECODE result: " << result << ", ptr=" << (void*)ptr << ", len=" << len << std::endl;
-        obj->ptr = ptr;
-        obj->len = len;
+    return FALSE;
+}
+
+struct nfs_xdr_buffer {
+    char* data;
+    u_int size;
+    u_int max_size;
+};
+
+static bool_t nfs_xdr_buffer_func(XDR* xdrs, nfs_xdr_buffer* obj) {
+    if (xdrs->x_op == XDR_ENCODE) {
+        int len = obj->size;
+        if (!xdr_int(xdrs, &len)) return FALSE;
+        return xdr_opaque(xdrs, obj->data, obj->size);
+    } else if (xdrs->x_op == XDR_DECODE) {
+        int len = 0;
+        if (!xdr_int(xdrs, &len)) return FALSE;
+        if (len <= 0 || len > (int)obj->max_size) return FALSE;
+        if (!xdr_opaque(xdrs, obj->data, len)) return FALSE;
+        obj->size = len;
+        return TRUE;
     }
-    return result;
+    return FALSE;
 }
 
 }
@@ -116,19 +144,27 @@ public:
         timeout_tv.tv_sec = impl_->timeout_.count() / 1000;
         timeout_tv.tv_usec = (impl_->timeout_.count() % 1000) * 1000;
         
-        xdr_bytes_args in_data;
-        in_data.ptr = reinterpret_cast<char*>(const_cast<uint8_t*>(req_bytes.data()));
-        in_data.len = req_bytes.size();
+        nfs_xdr_buffer in_buf;
+        in_buf.data = reinterpret_cast<char*>(const_cast<uint8_t*>(req_bytes.data()));
+        in_buf.size = req_bytes.size();
+        in_buf.max_size = req_bytes.size();
         
-        xdr_bytes_args out_data = {nullptr, 0};
+        constexpr u_int MAX_RESP = 65536;
+        char* resp_data = static_cast<char*>(malloc(MAX_RESP));
+        memset(resp_data, 0, MAX_RESP);
+        
+        nfs_xdr_buffer out_buf;
+        out_buf.data = resp_data;
+        out_buf.size = 0;
+        out_buf.max_size = MAX_RESP;
         
         enum clnt_stat result = clnt_call(
             impl_->client_,
             proc_num,
-            (xdrproc_t)xdr_bytes_wrapper,
-            (caddr_t)&in_data,
-            (xdrproc_t)xdr_bytes_wrapper,
-            (caddr_t)&out_data,
+            (xdrproc_t)nfs_xdr_buffer_func,
+            (caddr_t)&in_buf,
+            (xdrproc_t)nfs_xdr_buffer_func,
+            (caddr_t)&out_buf,
             timeout_tv
         );
         
@@ -136,6 +172,7 @@ public:
             std::cerr << "RPC call failed, proc=" << proc_num 
                       << ", status=" << static_cast<int>(result)
                       << ", msg=" << clnt_sperrno(result) << std::endl;
+            free(resp_data);
         }
         
         switch (result) {
@@ -148,27 +185,33 @@ public:
         }
         
         if constexpr (!std::is_same_v<ResType, void>) {
-            if (out_data.ptr == nullptr || out_data.len == 0) {
+            std::cerr << "Received " << out_buf.size << " bytes from server" << std::endl;
+            std::vector<uint8_t> data(out_buf.data, out_buf.data + out_buf.size);
+            free(resp_data);
+            
+            std::cerr << "Data (hex): ";
+            for (size_t i = 0; i < std::min(data.size(), size_t(100)); ++i) {
+                fprintf(stderr, "%02x ", data[i]);
+                if ((i + 1) % 16 == 0) std::cerr << std::endl;
+            }
+            std::cerr << std::endl;
+            
+            if (data.empty()) {
                 std::cerr << "No data received from server" << std::endl;
                 return unexpected(RpcError::DECODE_ERROR);
             }
-            std::cerr << "Received " << out_data.len << " bytes from server" << std::endl;
-            std::vector<uint8_t> data(out_data.ptr, out_data.ptr + out_data.len);
+            
             xdr::XdrBuffer resp_buf(data);
             ResType response;
             try {
                 resp_buf.unpack(response);
             } catch (const std::exception& e) {
                 std::cerr << "XDR unpack failed: " << e.what() << std::endl;
-                free(out_data.ptr);
                 return unexpected(RpcError::DECODE_ERROR);
             }
-            free(out_data.ptr);
             return response;
         } else {
-            if (out_data.ptr) {
-                free(out_data.ptr);
-            }
+            free(resp_data);
             return {};
         }
 #else
