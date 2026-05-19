@@ -1,4 +1,5 @@
 #include "nfs3/nfs3_client.hpp"
+#include "nfs3/nfs3_xdr.hpp"
 
 namespace nfs3 {
 
@@ -19,9 +20,11 @@ expected<void, Nfs3Error> NFS3TestClient::null() {
 
 expected<GETATTR3resok, Nfs3Error> NFS3TestClient::getattr(const nfs_fh3& object) {
     GETATTR3args args{object};
-    auto result = endpoint_.call<GETATTR3res>(
+    auto result = endpoint_.call_with_xdr<GETATTR3args, GETATTR3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_GETATTR),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_GETATTR3args),
+        reinterpret_cast<xdrproc_t>(xdr_GETATTR3res)
     );
     
     if (!result) {
@@ -44,9 +47,11 @@ expected<SETATTR3resok, Nfs3Error> NFS3TestClient::setattr(
     const sattr3& new_attributes) {
     
     SETATTR3args args{object, new_attributes, std::nullopt};
-    auto result = endpoint_.call<SETATTR3res>(
+    auto result = endpoint_.call_with_xdr<SETATTR3args, SETATTR3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_SETATTR),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_SETATTR3args),
+        reinterpret_cast<xdrproc_t>(xdr_SETATTR3res)
     );
     
     if (!result) {
@@ -69,9 +74,11 @@ expected<LOOKUP3resok, Nfs3Error> NFS3TestClient::lookup(
     std::string_view name) {
     
     LOOKUP3args args{dir, std::string(name)};
-    auto result = endpoint_.call<LOOKUP3res>(
+    auto result = endpoint_.call_with_xdr<LOOKUP3args, LOOKUP3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_LOOKUP),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_LOOKUP3args),
+        reinterpret_cast<xdrproc_t>(xdr_LOOKUP3res)
     );
     
     if (!result) {
@@ -94,9 +101,11 @@ expected<ACCESS3resok, Nfs3Error> NFS3TestClient::access(
     uint32_t access_mask) {
     
     ACCESS3args args{object, access_mask};
-    auto result = endpoint_.call<ACCESS3res>(
+    auto result = endpoint_.call_with_xdr<ACCESS3args, ACCESS3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_ACCESS),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_ACCESS3args),
+        reinterpret_cast<xdrproc_t>(xdr_ACCESS3res)
     );
     
     if (!result) {
@@ -116,9 +125,11 @@ expected<ACCESS3resok, Nfs3Error> NFS3TestClient::access(
 
 expected<READLINK3resok, Nfs3Error> NFS3TestClient::readlink(const nfs_fh3& symlink) {
     READLINK3args args{symlink};
-    auto result = endpoint_.call<READLINK3res>(
+    auto result = endpoint_.call_with_xdr<READLINK3args, READLINK3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_READLINK),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_READLINK3args),
+        reinterpret_cast<xdrproc_t>(xdr_READLINK3res)
     );
     
     if (!result) {
@@ -142,9 +153,11 @@ expected<READ3resok, Nfs3Error> NFS3TestClient::read(
     uint32_t count) {
     
     READ3args args{file, offset, count};
-    auto result = endpoint_.call<READ3res>(
+    auto result = endpoint_.call_with_xdr<READ3args, READ3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_READ),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_READ3args),
+        reinterpret_cast<xdrproc_t>(xdr_READ3res)
     );
     
     if (!result) {
@@ -169,9 +182,11 @@ expected<WRITE3resok, Nfs3Error> NFS3TestClient::write(
     const bytes& data) {
     
     WRITE3args args{file, offset, static_cast<uint32_t>(data.size()), stable, data};
-    auto result = endpoint_.call<WRITE3res>(
+    auto result = endpoint_.call_with_xdr<WRITE3args, WRITE3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_WRITE),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_WRITE3args),
+        reinterpret_cast<xdrproc_t>(xdr_WRITE3res)
     );
     
     if (!result) {
@@ -203,9 +218,11 @@ expected<CREATE3resok, Nfs3Error> NFS3TestClient::create(
         createverf3{}
     };
     
-    auto result = endpoint_.call<CREATE3res>(
+    auto result = endpoint_.call_with_xdr<CREATE3args, CREATE3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_CREATE),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_CREATE3args),
+        reinterpret_cast<xdrproc_t>(xdr_CREATE3res)
     );
     
     if (!result) {
@@ -229,9 +246,11 @@ expected<MKDIR3resok, Nfs3Error> NFS3TestClient::mkdir(
     const sattr3& attributes) {
     
     MKDIR3args args{dir, std::string(name), attributes};
-    auto result = endpoint_.call<MKDIR3res>(
+    auto result = endpoint_.call_with_xdr<MKDIR3args, MKDIR3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_MKDIR),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_MKDIR3args),
+        reinterpret_cast<xdrproc_t>(xdr_MKDIR3res)
     );
     
     if (!result) {
@@ -256,9 +275,11 @@ expected<SYMLINK3resok, Nfs3Error> NFS3TestClient::symlink(
     const std::string& data) {
     
     SYMLINK3args args{dir, std::string(name), attributes, data};
-    auto result = endpoint_.call<SYMLINK3res>(
+    auto result = endpoint_.call_with_xdr<SYMLINK3args, SYMLINK3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_SYMLINK),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_SYMLINK3args),
+        reinterpret_cast<xdrproc_t>(xdr_SYMLINK3res)
     );
     
     if (!result) {
@@ -283,9 +304,11 @@ expected<MKNOD3resok, Nfs3Error> NFS3TestClient::mknod(
     const sattr3& attributes) {
     
     MKNOD3args args{dir, std::string(name), type, attributes};
-    auto result = endpoint_.call<MKNOD3res>(
+    auto result = endpoint_.call_with_xdr<MKNOD3args, MKNOD3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_MKNOD),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_MKNOD3args),
+        reinterpret_cast<xdrproc_t>(xdr_MKNOD3res)
     );
     
     if (!result) {
@@ -308,9 +331,11 @@ expected<REMOVE3resok, Nfs3Error> NFS3TestClient::remove(
     std::string_view name) {
     
     REMOVE3args args{dir, std::string(name)};
-    auto result = endpoint_.call<REMOVE3res>(
+    auto result = endpoint_.call_with_xdr<REMOVE3args, REMOVE3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_REMOVE),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_REMOVE3args),
+        reinterpret_cast<xdrproc_t>(xdr_REMOVE3res)
     );
     
     if (!result) {
@@ -333,9 +358,11 @@ expected<RMDIR3resok, Nfs3Error> NFS3TestClient::rmdir(
     std::string_view name) {
     
     RMDIR3args args{dir, std::string(name)};
-    auto result = endpoint_.call<RMDIR3res>(
+    auto result = endpoint_.call_with_xdr<RMDIR3args, RMDIR3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_RMDIR),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_RMDIR3args),
+        reinterpret_cast<xdrproc_t>(xdr_RMDIR3res)
     );
     
     if (!result) {
@@ -366,9 +393,11 @@ expected<RENAME3resok, Nfs3Error> NFS3TestClient::rename_op(
         std::string(to_name)
     };
     
-    auto result = endpoint_.call<RENAME3res>(
+    auto result = endpoint_.call_with_xdr<RENAME3args, RENAME3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_RENAME),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_RENAME3args),
+        reinterpret_cast<xdrproc_t>(xdr_RENAME3res)
     );
     
     if (!result) {
@@ -392,9 +421,11 @@ expected<LINK3resok, Nfs3Error> NFS3TestClient::link(
     std::string_view link_name) {
     
     LINK3args args{file, link_dir, std::string(link_name)};
-    auto result = endpoint_.call<LINK3res>(
+    auto result = endpoint_.call_with_xdr<LINK3args, LINK3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_LINK),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_LINK3args),
+        reinterpret_cast<xdrproc_t>(xdr_LINK3res)
     );
     
     if (!result) {
@@ -419,9 +450,11 @@ expected<READDIR3resok, Nfs3Error> NFS3TestClient::readdir(
     uint32_t count) {
     
     READDIR3args args{dir, cookie, cookieverf, count};
-    auto result = endpoint_.call<READDIR3res>(
+    auto result = endpoint_.call_with_xdr<READDIR3args, READDIR3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_READDIR),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_READDIR3args),
+        reinterpret_cast<xdrproc_t>(xdr_READDIR3res)
     );
     
     if (!result) {
@@ -447,9 +480,11 @@ expected<READDIRPLUS3resok, Nfs3Error> NFS3TestClient::readdirplus(
     uint32_t maxcount) {
     
     READDIRPLUS3args args{dir, cookie, cookieverf, dircount, maxcount};
-    auto result = endpoint_.call<READDIRPLUS3res>(
+    auto result = endpoint_.call_with_xdr<READDIRPLUS3args, READDIRPLUS3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_READDIRPLUS),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_READDIRPLUS3args),
+        reinterpret_cast<xdrproc_t>(xdr_READDIRPLUS3res)
     );
     
     if (!result) {
@@ -469,9 +504,11 @@ expected<READDIRPLUS3resok, Nfs3Error> NFS3TestClient::readdirplus(
 
 expected<FSSTAT3resok, Nfs3Error> NFS3TestClient::fsstat(const nfs_fh3& fsroot) {
     FSSTAT3args args{fsroot};
-    auto result = endpoint_.call<FSSTAT3res>(
+    auto result = endpoint_.call_with_xdr<FSSTAT3args, FSSTAT3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_FSSTAT),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_FSSTAT3args),
+        reinterpret_cast<xdrproc_t>(xdr_FSSTAT3res)
     );
     
     if (!result) {
@@ -491,9 +528,11 @@ expected<FSSTAT3resok, Nfs3Error> NFS3TestClient::fsstat(const nfs_fh3& fsroot) 
 
 expected<FSINFO3resok, Nfs3Error> NFS3TestClient::fsinfo(const nfs_fh3& fsroot) {
     FSINFO3args args{fsroot};
-    auto result = endpoint_.call<FSINFO3res>(
+    auto result = endpoint_.call_with_xdr<FSINFO3args, FSINFO3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_FSINFO),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_FSINFO3args),
+        reinterpret_cast<xdrproc_t>(xdr_FSINFO3res)
     );
     
     if (!result) {
@@ -513,9 +552,11 @@ expected<FSINFO3resok, Nfs3Error> NFS3TestClient::fsinfo(const nfs_fh3& fsroot) 
 
 expected<PATHCONF3resok, Nfs3Error> NFS3TestClient::pathconf(const nfs_fh3& object) {
     PATHCONF3args args{object};
-    auto result = endpoint_.call<PATHCONF3res>(
+    auto result = endpoint_.call_with_xdr<PATHCONF3args, PATHCONF3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_PATHCONF),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_PATHCONF3args),
+        reinterpret_cast<xdrproc_t>(xdr_PATHCONF3res)
     );
     
     if (!result) {
@@ -539,9 +580,11 @@ expected<COMMIT3resok, Nfs3Error> NFS3TestClient::commit(
     uint32_t count) {
     
     COMMIT3args args{file, offset, count};
-    auto result = endpoint_.call<COMMIT3res>(
+    auto result = endpoint_.call_with_xdr<COMMIT3args, COMMIT3res>(
         static_cast<uint32_t>(proc_num::NFSPROC3_COMMIT),
-        args
+        args,
+        reinterpret_cast<xdrproc_t>(xdr_COMMIT3args),
+        reinterpret_cast<xdrproc_t>(xdr_COMMIT3res)
     );
     
     if (!result) {
@@ -560,4 +603,4 @@ expected<COMMIT3resok, Nfs3Error> NFS3TestClient::commit(
     return result->resok.value();
 }
 
-} 
+}

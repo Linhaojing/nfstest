@@ -16,6 +16,64 @@
 
 namespace nfs3 {
 
+enum class RpcError {
+    SUCCESS = 0,
+    CONNECTION_FAILED,
+    TIMEOUT,
+    RPC_MISMATCH,
+    PROG_UNAVAIL,
+    PROG_MISMATCH,
+    PROC_UNAVAIL,
+    AUTH_ERROR,
+    DECODE_ERROR,
+    ENCODE_ERROR,
+    UNKNOWN
+};
+
+template<typename ArgType, typename ResType>
+expected<ResType, RpcError> call_with_xdr(
+    CLIENT* client,
+    uint32_t proc_num,
+    const ArgType& args,
+    xdrproc_t xdr_arg_func,
+    xdrproc_t xdr_res_func,
+    std::chrono::milliseconds timeout
+) {
+    ResType response;
+    memset(&response, 0, sizeof(response));
+    
+    struct timeval timeout_tv;
+    timeout_tv.tv_sec = timeout.count() / 1000;
+    timeout_tv.tv_usec = (timeout.count() % 1000) * 1000;
+    
+    enum clnt_stat result = clnt_call(
+        client,
+        proc_num,
+        xdr_arg_func,
+        (caddr_t)&args,
+        xdr_res_func,
+        (caddr_t)&response,
+        timeout_tv
+    );
+    
+    if (result != RPC_SUCCESS) {
+        std::cerr << "RPC call failed, proc=" << proc_num 
+                  << ", status=" << static_cast<int>(result)
+                  << ", msg=" << clnt_sperrno(result) << std::endl;
+    }
+    
+    switch (result) {
+        case RPC_SUCCESS: break;
+        case RPC_TIMEDOUT: return unexpected(RpcError::TIMEOUT);
+        case RPC_PROGUNAVAIL: return unexpected(RpcError::PROG_UNAVAIL);
+        case RPC_VERSMISMATCH: return unexpected(RpcError::PROG_MISMATCH);
+        case RPC_PROCUNAVAIL: return unexpected(RpcError::PROC_UNAVAIL);
+        default: return unexpected(RpcError::UNKNOWN);
+    }
+    
+    return response;
+}
+
 struct xdr_nfs_data {
     char* data;
     u_int len;
@@ -67,20 +125,6 @@ static bool_t nfs_xdr_buffer_func(XDR* xdrs, nfs_xdr_buffer* obj) {
 }
 
 namespace nfs3 {
-
-enum class RpcError {
-    SUCCESS = 0,
-    CONNECTION_FAILED,
-    TIMEOUT,
-    RPC_MISMATCH,
-    PROG_UNAVAIL,
-    PROG_MISMATCH,
-    PROC_UNAVAIL,
-    AUTH_ERROR,
-    DECODE_ERROR,
-    ENCODE_ERROR,
-    UNKNOWN
-};
 
 #ifdef HAVE_LIBTIRPC
 class RPCEndpointImpl {
@@ -261,6 +305,62 @@ public:
         }
 #else
         (void)proc_num;
+        return unexpected(RpcError::CONNECTION_FAILED);
+#endif
+    }
+    
+    template<typename ArgType, typename ResType>
+    expected<ResType, RpcError> call_with_xdr(
+        uint32_t proc_num,
+        const ArgType& args,
+        xdrproc_t xdr_arg_func,
+        xdrproc_t xdr_res_func
+    ) {
+#ifdef HAVE_LIBTIRPC
+        if (!is_connected()) {
+            return unexpected(RpcError::CONNECTION_FAILED);
+        }
+        
+        impl_->xid_counter_++;
+        
+        ResType response;
+        memset(&response, 0, sizeof(response));
+        
+        struct timeval timeout_tv;
+        timeout_tv.tv_sec = impl_->timeout_.count() / 1000;
+        timeout_tv.tv_usec = (impl_->timeout_.count() % 1000) * 1000;
+        
+        enum clnt_stat result = clnt_call(
+            impl_->client_,
+            proc_num,
+            xdr_arg_func,
+            (caddr_t)&args,
+            xdr_res_func,
+            (caddr_t)&response,
+            timeout_tv
+        );
+        
+        if (result != RPC_SUCCESS) {
+            std::cerr << "RPC call_with_xdr failed, proc=" << proc_num 
+                      << ", status=" << static_cast<int>(result)
+                      << ", msg=" << clnt_sperrno(result) << std::endl;
+        }
+        
+        switch (result) {
+            case RPC_SUCCESS: break;
+            case RPC_TIMEDOUT: return unexpected(RpcError::TIMEOUT);
+            case RPC_PROGUNAVAIL: return unexpected(RpcError::PROG_UNAVAIL);
+            case RPC_VERSMISMATCH: return unexpected(RpcError::PROG_MISMATCH);
+            case RPC_PROCUNAVAIL: return unexpected(RpcError::PROC_UNAVAIL);
+            default: return unexpected(RpcError::UNKNOWN);
+        }
+        
+        return response;
+#else
+        (void)proc_num;
+        (void)args;
+        (void)xdr_arg_func;
+        (void)xdr_res_func;
         return unexpected(RpcError::CONNECTION_FAILED);
 #endif
     }
