@@ -476,18 +476,18 @@ struct CREATE3args {
 
 struct CREATE3resok {
     post_op_attr obj_attributes;
-    post_op_attr dir_attributes;
+    wcc_data dir_wcc;
     nfs_fh3 object;
     
     void serialize(xdr::XdrBuffer& buf) const {
         buf.pack(obj_attributes);
-        buf.pack(dir_attributes);
+        buf.pack(dir_wcc);
         buf.pack(object);
     }
     
     void deserialize(xdr::XdrBuffer& buf) {
         buf.unpack(obj_attributes);
-        buf.unpack(dir_attributes);
+        buf.unpack(dir_wcc);
         buf.unpack(object);
     }
 };
@@ -773,18 +773,18 @@ struct MKDIR3args {
 
 struct MKDIR3resok {
     post_op_attr obj_attributes;
-    post_op_attr dir_attributes;
+    wcc_data dir_wcc;
     nfs_fh3 object;
     
     void serialize(xdr::XdrBuffer& buf) const {
         buf.pack(obj_attributes);
-        buf.pack(dir_attributes);
+        buf.pack(dir_wcc);
         buf.pack(object);
     }
     
     void deserialize(xdr::XdrBuffer& buf) {
         buf.unpack(obj_attributes);
-        buf.unpack(dir_attributes);
+        buf.unpack(dir_wcc);
         buf.unpack(object);
     }
 };
@@ -835,18 +835,18 @@ struct SYMLINK3args {
 
 struct SYMLINK3resok {
     post_op_attr obj_attributes;
-    post_op_attr dir_attributes;
+    wcc_data dir_wcc;
     nfs_fh3 object;
     
     void serialize(xdr::XdrBuffer& buf) const {
         buf.pack(obj_attributes);
-        buf.pack(dir_attributes);
+        buf.pack(dir_wcc);
         buf.pack(object);
     }
     
     void deserialize(xdr::XdrBuffer& buf) {
         buf.unpack(obj_attributes);
-        buf.unpack(dir_attributes);
+        buf.unpack(dir_wcc);
         buf.unpack(object);
     }
 };
@@ -911,18 +911,18 @@ struct MKNOD3args {
 
 struct MKNOD3resok {
     post_op_attr obj_attributes;
-    post_op_attr dir_attributes;
+    wcc_data dir_wcc;
     nfs_fh3 object;
     
     void serialize(xdr::XdrBuffer& buf) const {
         buf.pack(obj_attributes);
-        buf.pack(dir_attributes);
+        buf.pack(dir_wcc);
         buf.pack(object);
     }
     
     void deserialize(xdr::XdrBuffer& buf) {
         buf.unpack(obj_attributes);
-        buf.unpack(dir_attributes);
+        buf.unpack(dir_wcc);
         buf.unpack(object);
     }
 };
@@ -1430,7 +1430,7 @@ struct FSSTAT3resok {
     uint64_t tfiles = 0;
     uint64_t ffiles = 0;
     uint64_t afiles = 0;
-    uint64_t invarsec = 0;
+    uint32_t invarsec = 0;
     
     void serialize(xdr::XdrBuffer& buf) const {
         buf.pack(obj_attributes);
@@ -1529,9 +1529,9 @@ struct FSINFO3resok {
     uint32_t wtmult = 0;
     uint32_t dtpref = 0;
     uint64_t maxfilesize = 0;
-    uint64_t time_delta_seconds = 0;
+    uint32_t time_delta_seconds = 0;
     uint32_t time_delta_nseconds = 0;
-    fsinfo3_resok_property properties;
+    uint32_t properties = 0;  // bitmask (FSF_LINK, FSF_SYMLINK, etc.)
     
     void serialize(xdr::XdrBuffer& buf) const {
         buf.pack(obj_attributes);

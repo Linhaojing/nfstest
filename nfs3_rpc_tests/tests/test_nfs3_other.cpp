@@ -92,7 +92,7 @@ TEST_F(Nfs3OtherTest, MkdirResOkRoundTrip) {
     res.resok.emplace();
     res.resok->obj_attributes.follow = true;
     res.resok->obj_attributes.attributes.type_ = nfs3::ftype3::NF3DIR;
-    res.resok->dir_attributes.follow = true;
+    res.resok->dir_wcc.after.follow = true;
     res.resok->object.data = {0xAA, 0xBB, 0xCC};
     auto restored = XdrRoundTrip(res);
     ASSERT_EQ(res.status, restored.status);

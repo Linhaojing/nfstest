@@ -6,6 +6,7 @@ namespace nfs3 {
 
 constexpr uint32_t NFS_PROGRAM = 100003;
 constexpr uint32_t NFS_V3 = 3;
+constexpr uint32_t NFS3_FHSIZE = 64;
 
 enum class nfsstat3 : uint32_t {
     NFS3_OK = 0,
