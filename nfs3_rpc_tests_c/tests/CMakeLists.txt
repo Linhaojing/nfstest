@@ -1,0 +1,36 @@
+add_executable(test_suite_c test_main.c)
+target_link_libraries(test_suite_c PRIVATE nfs3_test_core_c)
+target_include_directories(test_suite_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(test_xdr_c test_xdr.c)
+target_link_libraries(test_xdr_c PRIVATE nfs3_test_core_c)
+target_include_directories(test_xdr_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(test_nfs3_getattr_c test_nfs3_getattr.c)
+target_link_libraries(test_nfs3_getattr_c PRIVATE nfs3_test_core_c)
+target_include_directories(test_nfs3_getattr_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(test_nfs3_lookup_c test_nfs3_lookup.c)
+target_link_libraries(test_nfs3_lookup_c PRIVATE nfs3_test_core_c)
+target_include_directories(test_nfs3_lookup_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(test_nfs3_readwrite_c test_nfs3_readwrite.c)
+target_link_libraries(test_nfs3_readwrite_c PRIVATE nfs3_test_core_c)
+target_include_directories(test_nfs3_readwrite_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(test_nfs3_create_c test_nfs3_create.c)
+target_link_libraries(test_nfs3_create_c PRIVATE nfs3_test_core_c)
+target_include_directories(test_nfs3_create_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(test_nfs3_readdir_c test_nfs3_readdir.c)
+target_link_libraries(test_nfs3_readdir_c PRIVATE nfs3_test_core_c)
+target_include_directories(test_nfs3_readdir_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+enable_testing()
+add_test(NAME test_suite_c COMMAND test_suite_c)
+add_test(NAME test_xdr_c COMMAND test_xdr_c)
+add_test(NAME test_nfs3_getattr_c COMMAND test_nfs3_getattr_c)
+add_test(NAME test_nfs3_lookup_c COMMAND test_nfs3_lookup_c)
+add_test(NAME test_nfs3_readwrite_c COMMAND test_nfs3_readwrite_c)
+add_test(NAME test_nfs3_create_c COMMAND test_nfs3_create_c)
+add_test(NAME test_nfs3_readdir_c COMMAND test_nfs3_readdir_c)
