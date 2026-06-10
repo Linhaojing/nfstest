@@ -4,16 +4,15 @@
 /* --- Basic types --- */
 
 void xdr_pack_writeverf3(xdr_buf_t* buf, const writeverf3_t* v) {
-    xdr_pack_opaque(buf, v->data, 8);
+    xdr_pack_bytes(buf, v->data, 8);
 }
 
 void xdr_unpack_writeverf3(xdr_buf_t* buf, writeverf3_t* v) {
-    uint8_t* d;
-    uint32_t len;
-    xdr_unpack_opaque(buf, &d, &len);
     memset(v->data, 0, 8);
-    if (len > 0) memcpy(v->data, d, len < 8 ? len : 8);
-    free(d);
+    if (buf->pos + 8 <= buf->size) {
+        memcpy(v->data, buf->data + buf->pos, 8);
+        buf->pos += 8;
+    }
 }
 
 void xdr_pack_nfs_fh3(xdr_buf_t* buf, const nfs_fh3_t* fh) {
@@ -135,64 +134,75 @@ void xdr_unpack_wcc_data(xdr_buf_t* buf, wcc_data_t* d) {
 }
 
 void xdr_pack_sattr3(xdr_buf_t* buf, const sattr3_t* s) {
-    xdr_pack_uint32(buf, s->mode_set ? s->mode : 0xFFFFFFFFU);
-    xdr_pack_uint32(buf, s->uid_set ? s->uid : 0xFFFFFFFFU);
-    xdr_pack_uint32(buf, s->gid_set ? s->gid : 0xFFFFFFFFU);
+    xdr_pack_bool(buf, s->mode_set);
+    if (s->mode_set) {
+        xdr_pack_uint32(buf, s->mode);
+    }
+
+    xdr_pack_bool(buf, s->uid_set);
+    if (s->uid_set) {
+        xdr_pack_uint32(buf, s->uid);
+    }
+
+    xdr_pack_bool(buf, s->gid_set);
+    if (s->gid_set) {
+        xdr_pack_uint32(buf, s->gid);
+    }
+
     xdr_pack_bool(buf, s->size_set);
     if (s->size_set) {
         xdr_pack_uint64(buf, s->size);
     }
-    xdr_pack_bool(buf, s->atime_set ? 1 : 0);
+
+    xdr_pack_uint32(buf, s->atime_set ? 2U : 0U);
     if (s->atime_set) {
         xdr_pack_nfstime3(buf, &s->atime);
     }
-    xdr_pack_bool(buf, s->mtime_set ? 1 : 0);
+
+    xdr_pack_uint32(buf, s->mtime_set ? 2U : 0U);
     if (s->mtime_set) {
         xdr_pack_nfstime3(buf, &s->mtime);
     }
 }
 
-#define SENTINEL_U32 0xFFFFFFFFU
-
 void xdr_unpack_sattr3(xdr_buf_t* buf, sattr3_t* s) {
-    uint32_t v;
-    xdr_unpack_uint32(buf, &v);
-    if (v != SENTINEL_U32) { s->mode_set = 1; s->mode = v; }
-    else s->mode_set = 0;
-
-    xdr_unpack_uint32(buf, &v);
-    if (v != SENTINEL_U32) { s->uid_set = 1; s->uid = v; }
-    else s->uid_set = 0;
-
-    xdr_unpack_uint32(buf, &v);
-    if (v != SENTINEL_U32) { s->gid_set = 1; s->gid = v; }
-    else s->gid_set = 0;
-
     int flag;
+    xdr_unpack_bool(buf, &flag);
+    s->mode_set = flag;
+    if (flag) xdr_unpack_uint32(buf, &s->mode);
+
+    xdr_unpack_bool(buf, &flag);
+    s->uid_set = flag;
+    if (flag) xdr_unpack_uint32(buf, &s->uid);
+
+    xdr_unpack_bool(buf, &flag);
+    s->gid_set = flag;
+    if (flag) xdr_unpack_uint32(buf, &s->gid);
+
     xdr_unpack_bool(buf, &flag);
     s->size_set = flag;
     if (flag) xdr_unpack_uint64(buf, &s->size);
 
-    xdr_unpack_bool(buf, &flag);
-    s->atime_set = flag;
-    if (flag) xdr_unpack_nfstime3(buf, &s->atime);
+    uint32_t time_how;
+    xdr_unpack_uint32(buf, &time_how);
+    s->atime_set = (time_how == 2U);
+    if (s->atime_set) xdr_unpack_nfstime3(buf, &s->atime);
 
-    xdr_unpack_bool(buf, &flag);
-    s->mtime_set = flag;
-    if (flag) xdr_unpack_nfstime3(buf, &s->mtime);
+    xdr_unpack_uint32(buf, &time_how);
+    s->mtime_set = (time_how == 2U);
+    if (s->mtime_set) xdr_unpack_nfstime3(buf, &s->mtime);
 }
 
 void xdr_pack_createverf3(xdr_buf_t* buf, const createverf3_t* v) {
-    xdr_pack_opaque(buf, v->data, 8);
+    xdr_pack_bytes(buf, v->data, 8);
 }
 
 void xdr_unpack_createverf3(xdr_buf_t* buf, createverf3_t* v) {
-    uint8_t* d;
-    uint32_t len;
-    xdr_unpack_opaque(buf, &d, &len);
     memset(v->data, 0, 8);
-    if (len > 0) memcpy(v->data, d, len < 8 ? len : 8);
-    free(d);
+    if (buf->pos + 8 <= buf->size) {
+        memcpy(v->data, buf->data + buf->pos, 8);
+        buf->pos += 8;
+    }
 }
 
 /* --- GETATTR --- */
@@ -334,7 +344,7 @@ void xdr_pack_READ3res(xdr_buf_t* buf, const READ3res_t* res) {
     xdr_pack_uint32(buf, (uint32_t)res->status);
     if (res->status == NFS3_OK && res->has_resok) {
         xdr_pack_post_op_attr(buf, &res->resok.file_attributes);
-        xdr_pack_uint64(buf, res->resok.count);
+        xdr_pack_uint32(buf, res->resok.count);
         xdr_pack_bool(buf, res->resok.eof);
         xdr_pack_opaque(buf, res->resok.data, res->resok.data_len);
     }
@@ -348,7 +358,7 @@ void xdr_unpack_READ3res(xdr_buf_t* buf, READ3res_t* res) {
     res->has_resok = (res->status == NFS3_OK);
     if (res->has_resok) {
         xdr_unpack_post_op_attr(buf, &res->resok.file_attributes);
-        xdr_unpack_uint64(buf, &res->resok.count);
+        xdr_unpack_uint32(buf, &res->resok.count);
         xdr_unpack_bool(buf, &res->resok.eof);
         uint8_t* d;
         uint32_t len;
@@ -384,10 +394,12 @@ void xdr_unpack_WRITE3args(xdr_buf_t* buf, WRITE3args_t* args) {
 void xdr_pack_WRITE3res(xdr_buf_t* buf, const WRITE3res_t* res) {
     xdr_pack_uint32(buf, (uint32_t)res->status);
     if (res->status == NFS3_OK && res->has_resok) {
-        xdr_pack_post_op_attr(buf, &res->resok.file_attributes);
+        xdr_pack_wcc_data(buf, &res->resok.file_wcc);
         xdr_pack_uint32(buf, res->resok.count);
         xdr_pack_uint32(buf, (uint32_t)res->resok.committed);
         xdr_pack_writeverf3(buf, &res->resok.verf);
+    } else {
+        xdr_pack_wcc_data(buf, &res->resfail.file_wcc);
     }
 }
 
@@ -397,12 +409,14 @@ void xdr_unpack_WRITE3res(xdr_buf_t* buf, WRITE3res_t* res) {
     res->status = (nfsstat3_t)s;
     res->has_resok = (res->status == NFS3_OK);
     if (res->has_resok) {
-        xdr_unpack_post_op_attr(buf, &res->resok.file_attributes);
+        xdr_unpack_wcc_data(buf, &res->resok.file_wcc);
         xdr_unpack_uint32(buf, &res->resok.count);
         uint32_t st;
         xdr_unpack_uint32(buf, &st);
         res->resok.committed = (stable_how_t)st;
         xdr_unpack_writeverf3(buf, &res->resok.verf);
+    } else {
+        xdr_unpack_wcc_data(buf, &res->resfail.file_wcc);
     }
 }
 
@@ -412,9 +426,10 @@ void xdr_pack_CREATE3args(xdr_buf_t* buf, const CREATE3args_t* args) {
     xdr_pack_nfs_fh3(buf, &args->where_dir);
     xdr_pack_cstring(buf, args->where_name);
     xdr_pack_uint32(buf, (uint32_t)args->how_mode);
-    xdr_pack_sattr3(buf, &args->how_attributes);
     if (args->how_mode == EXCLUSIVE) {
         xdr_pack_createverf3(buf, &args->how_verf);
+    } else {
+        xdr_pack_sattr3(buf, &args->how_attributes);
     }
 }
 
@@ -425,18 +440,22 @@ void xdr_unpack_CREATE3args(xdr_buf_t* buf, CREATE3args_t* args) {
     uint32_t mode_val;
     xdr_unpack_uint32(buf, &mode_val);
     args->how_mode = (createmode3_t)mode_val;
-    xdr_unpack_sattr3(buf, &args->how_attributes);
     if (args->how_mode == EXCLUSIVE) {
         xdr_unpack_createverf3(buf, &args->how_verf);
+    } else {
+        xdr_unpack_sattr3(buf, &args->how_attributes);
     }
 }
 
 void xdr_pack_CREATE3res(xdr_buf_t* buf, const CREATE3res_t* res) {
     xdr_pack_uint32(buf, (uint32_t)res->status);
     if (res->status == NFS3_OK && res->has_resok) {
+        xdr_pack_bool(buf, !nfs_fh3_is_empty(&res->resok.object));
+        if (!nfs_fh3_is_empty(&res->resok.object)) {
+            xdr_pack_nfs_fh3(buf, &res->resok.object);
+        }
         xdr_pack_post_op_attr(buf, &res->resok.obj_attributes);
         xdr_pack_wcc_data(buf, &res->resok.dir_wcc);
-        xdr_pack_nfs_fh3(buf, &res->resok.object);
     }
 }
 
@@ -447,9 +466,13 @@ void xdr_unpack_CREATE3res(xdr_buf_t* buf, CREATE3res_t* res) {
     res->status = (nfsstat3_t)s;
     res->has_resok = (res->status == NFS3_OK);
     if (res->has_resok) {
+        int has_object;
+        xdr_unpack_bool(buf, &has_object);
+        if (has_object) {
+            xdr_unpack_nfs_fh3(buf, &res->resok.object);
+        }
         xdr_unpack_post_op_attr(buf, &res->resok.obj_attributes);
         xdr_unpack_wcc_data(buf, &res->resok.dir_wcc);
-        xdr_unpack_nfs_fh3(buf, &res->resok.object);
     }
 }
 
@@ -562,9 +585,12 @@ void xdr_unpack_MKDIR3args(xdr_buf_t* buf, MKDIR3args_t* args) {
 void xdr_pack_MKDIR3res(xdr_buf_t* buf, const MKDIR3res_t* res) {
     xdr_pack_uint32(buf, (uint32_t)res->status);
     if (res->status == NFS3_OK && res->has_resok) {
+        xdr_pack_bool(buf, !nfs_fh3_is_empty(&res->resok.object));
+        if (!nfs_fh3_is_empty(&res->resok.object)) {
+            xdr_pack_nfs_fh3(buf, &res->resok.object);
+        }
         xdr_pack_post_op_attr(buf, &res->resok.obj_attributes);
         xdr_pack_wcc_data(buf, &res->resok.dir_wcc);
-        xdr_pack_nfs_fh3(buf, &res->resok.object);
     }
 }
 
@@ -575,9 +601,13 @@ void xdr_unpack_MKDIR3res(xdr_buf_t* buf, MKDIR3res_t* res) {
     res->status = (nfsstat3_t)s;
     res->has_resok = (res->status == NFS3_OK);
     if (res->has_resok) {
+        int has_object;
+        xdr_unpack_bool(buf, &has_object);
+        if (has_object) {
+            xdr_unpack_nfs_fh3(buf, &res->resok.object);
+        }
         xdr_unpack_post_op_attr(buf, &res->resok.obj_attributes);
         xdr_unpack_wcc_data(buf, &res->resok.dir_wcc);
-        xdr_unpack_nfs_fh3(buf, &res->resok.object);
     }
 }
 

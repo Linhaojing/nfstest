@@ -133,8 +133,8 @@ static void test_write_res_ok_roundtrip(void) {
     memset(&res, 0, sizeof(res));
     res.status = NFS3_OK;
     res.has_resok = 1;
-    res.resok.file_attributes.follow = 1;
-    res.resok.file_attributes.attributes.size = 8192;
+    res.resok.file_wcc.after.follow = 1;
+    res.resok.file_wcc.after.attributes.size = 8192;
     res.resok.count = 1024;
     res.resok.committed = FILE_SYNC;
 
