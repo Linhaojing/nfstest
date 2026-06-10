@@ -163,7 +163,7 @@ typedef struct {
 
 typedef struct {
     post_op_attr_t file_attributes;
-    uint64_t       count;
+    uint32_t       count;
     int            eof;
     uint8_t*       data;
     uint32_t       data_len;
@@ -195,16 +195,21 @@ void write3args_init(WRITE3args_t* args);
 void write3args_destroy(WRITE3args_t* args);
 
 typedef struct {
-    post_op_attr_t file_attributes;
-    uint32_t       count;
-    stable_how_t   committed;
-    writeverf3_t   verf;
+    wcc_data_t   file_wcc;
+    uint32_t     count;
+    stable_how_t committed;
+    writeverf3_t verf;
 } WRITE3resok_t;
 
 typedef struct {
-    nfsstat3_t   status;
-    int          has_resok;
-    WRITE3resok_t resok;
+    wcc_data_t file_wcc;
+} WRITE3resfail_t;
+
+typedef struct {
+    nfsstat3_t       status;
+    int              has_resok;
+    WRITE3resok_t    resok;
+    WRITE3resfail_t  resfail;
 } WRITE3res_t;
 
 /* CREATE */
