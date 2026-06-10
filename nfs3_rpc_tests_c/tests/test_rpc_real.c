@@ -33,7 +33,11 @@ static int rpc_call_bytes(
     size_t* resp_len
 ) {
     nfstest_rpc_client_t* client = nfstest_rpc_connect(host, port, 3000);
-    ASSERT_TRUE(client != NULL, "connect rpc service");
+    if (!client) {
+        printf("\n  FAIL  %s: connect rpc service (line %d)\n", current_test_name, __LINE__);
+        tests_failed++;
+        return NFSTEST_RPC_CONN_ERR;
+    }
 
     int status = nfstest_rpc_call(
         client,
@@ -72,8 +76,13 @@ static uint16_t get_rpc_service_port(uint32_t prog, uint32_t vers) {
         &resp,
         &resp_len
     );
-    ASSERT_EQ_INT(status, NFSTEST_RPC_OK, "portmap GETPORT should succeed");
-    ASSERT_TRUE(resp != NULL, "portmap response data");
+    if (status != NFSTEST_RPC_OK || resp == NULL) {
+        printf("\n  FAIL  %s: portmap GETPORT should succeed (line %d)\n", current_test_name, __LINE__);
+        tests_failed++;
+        free(resp);
+        xdr_buf_destroy(&args);
+        return 0;
+    }
 
     xdr_buf_t body;
     xdr_buf_init_copy(&body, resp, resp_len);
@@ -84,7 +93,11 @@ static uint16_t get_rpc_service_port(uint32_t prog, uint32_t vers) {
     xdr_buf_destroy(&body);
     xdr_buf_destroy(&args);
 
-    ASSERT_TRUE(port > 0 && port <= 65535, "service port should be valid");
+    if (port == 0 || port > 65535) {
+        printf("\n  FAIL  %s: service port should be valid (line %d)\n", current_test_name, __LINE__);
+        tests_failed++;
+        return 0;
+    }
     return (uint16_t)port;
 }
 
