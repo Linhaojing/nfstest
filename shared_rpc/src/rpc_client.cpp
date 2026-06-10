@@ -111,11 +111,14 @@ int nfstest_rpc_call(nfstest_rpc_client_t* client,
                      const uint8_t* args_data, size_t args_len,
                      uint8_t** resp_data, size_t* resp_len,
                      int timeout_ms) {
-    if (!client || !args_data || !resp_data || !resp_len) {
+    if (!client || !resp_data || !resp_len || (args_len > 0 && !args_data)) {
         return NFSTEST_RPC_CONN_ERR;
     }
 
-    std::vector<uint8_t> args(args_data, args_data + args_len);
+    std::vector<uint8_t> args;
+    if (args_len > 0) {
+        args.assign(args_data, args_data + args_len);
+    }
     auto [status, resp] = client->client.call(prog, vers, proc, args, timeout_ms);
 
     if (status != nfstest::rpc::RpcStatus::OK) {
@@ -125,6 +128,11 @@ int nfstest_rpc_call(nfstest_rpc_client_t* client,
     }
 
     *resp_len = resp.size();
+    if (resp.empty()) {
+        *resp_data = nullptr;
+        return NFSTEST_RPC_OK;
+    }
+
     *resp_data = static_cast<uint8_t*>(std::malloc(resp.size()));
     if (!*resp_data) {
         *resp_len = 0;
