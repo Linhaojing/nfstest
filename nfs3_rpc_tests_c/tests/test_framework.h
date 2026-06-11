@@ -6,6 +6,7 @@
 
 static int tests_passed = 0;
 static int tests_failed = 0;
+static int tests_skipped = 0;
 static const char* current_test_name = NULL;
 
 #define TEST(name) \
@@ -84,9 +85,15 @@ static const char* current_test_name = NULL;
     tests_passed++; \
 } while(0)
 
+#define TEST_SKIP(msg) do { \
+    printf("SKIP: %s\n", (msg)); \
+    tests_skipped++; \
+    return; \
+} while(0)
+
 #define PRINT_SUMMARY() do { \
     printf("\n========================================\n"); \
-    printf("  Results: %d passed, %d failed\n", tests_passed, tests_failed); \
+    printf("  Results: %d passed, %d failed, %d skipped\n", tests_passed, tests_failed, tests_skipped); \
     printf("========================================\n"); \
 } while(0)
 

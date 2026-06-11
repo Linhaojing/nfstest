@@ -3,70 +3,34 @@
 #include <gtest/gtest.h>
 
 using nfs3::NFS3TestContext;
-using nfs3::xdr::XdrBuffer;
 
 class Nfs3LookupTest : public NFS3TestContext {};
 
-template<typename T>
-static T XdrRoundTrip(const T& original) {
-    XdrBuffer buf;
-    buf.pack(original);
-    XdrBuffer back(buf.data());
-    T restored;
-    back.unpack(restored);
-    return restored;
+static nfs3::sattr3 RegularFileAttrs() {
+    nfs3::sattr3 attrs;
+    attrs.mode = 0644;
+    attrs.size = 0;
+    return attrs;
 }
 
-TEST_F(Nfs3LookupTest, LookupArgsRoundTrip) {
-    nfs3::LOOKUP3args args;
-    args.what_dir.data = {0x01, 0x02, 0x03};
-    args.what_name = "testfile.txt";
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.what_dir.data, restored.what_dir.data);
-    ASSERT_EQ(args.what_name, restored.what_name);
+TEST_F(Nfs3LookupTest, ExistingFileLookupSucceeds) {
+    const std::string name = unique_name("lookup_file");
+
+    auto create = client().create(root(), name, nfs3::createmode3::UNCHECKED, RegularFileAttrs());
+    ASSERT_TRUE(create.has_value()) << "CREATE should succeed before LOOKUP";
+
+    auto lookup = client().lookup(root(), name);
+    EXPECT_TRUE(lookup.has_value()) << "LOOKUP of created file should succeed";
+    if (lookup.has_value()) {
+        EXPECT_FALSE(lookup->object.data.empty());
+        EXPECT_EQ(lookup->object.data, create->object.data);
+    }
+
+    auto remove = client().remove(root(), name);
+    EXPECT_TRUE(remove.has_value()) << "cleanup REMOVE should succeed";
 }
 
-TEST_F(Nfs3LookupTest, LookupArgsEmptyName) {
-    nfs3::LOOKUP3args args;
-    args.what_dir.data = {0xFF, 0xFE, 0xFD};
-    args.what_name = "";
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.what_name, restored.what_name);
-}
-
-TEST_F(Nfs3LookupTest, LookupArgsLongPath) {
-    nfs3::LOOKUP3args args;
-    args.what_dir.data = {0x01};
-    args.what_name = "this/is/a/very/deep/nested/path/to/file.txt";
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.what_name, restored.what_name);
-}
-
-TEST_F(Nfs3LookupTest, LookupResOkRoundTrip) {
-    nfs3::LOOKUP3res res;
-    res.status = nfs3::nfsstat3::NFS3_OK;
-    res.resok.emplace();
-    res.resok->object.data = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    res.resok->obj_attributes.follow = true;
-    res.resok->obj_attributes.attributes.type_ = nfs3::ftype3::NF3REG;
-    res.resok->obj_attributes.attributes.size = 8192;
-    res.resok->dir_attributes.follow = true;
-    res.resok->dir_attributes.attributes.type_ = nfs3::ftype3::NF3DIR;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
-    ASSERT_EQ(res.resok->object.data, restored.resok->object.data);
-}
-
-TEST_F(Nfs3LookupTest, LookupResNoEntRoundTrip) {
-    nfs3::LOOKUP3res res;
-    res.status = nfs3::nfsstat3::NFS3ERR_NOENT;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
-}
-
-TEST_F(Nfs3LookupTest, LookupResNotDirRoundTrip) {
-    nfs3::LOOKUP3res res;
-    res.status = nfs3::nfsstat3::NFS3ERR_NOTDIR;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
+TEST_F(Nfs3LookupTest, NonexistentFileLookupFails) {
+    auto result = client().lookup(root(), unique_name("lookup_missing"));
+    EXPECT_FALSE(result.has_value()) << "LOOKUP of a nonexistent file should fail";
 }

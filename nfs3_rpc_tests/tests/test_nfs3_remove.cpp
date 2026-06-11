@@ -3,80 +3,49 @@
 #include <gtest/gtest.h>
 
 using nfs3::NFS3TestContext;
-using nfs3::xdr::XdrBuffer;
 
 class Nfs3RemoveTest : public NFS3TestContext {};
 
-template<typename T>
-static T XdrRoundTrip(const T& original) {
-    XdrBuffer buf;
-    buf.pack(original);
-    XdrBuffer back(buf.data());
-    T restored;
-    back.unpack(restored);
-    return restored;
+static nfs3::sattr3 FileAttrs() {
+    nfs3::sattr3 attrs;
+    attrs.mode = 0644;
+    attrs.size = 0;
+    return attrs;
 }
 
-TEST_F(Nfs3RemoveTest, RemoveArgsRoundTrip) {
-    nfs3::REMOVE3args args;
-    args.object_dir.data = {0x01, 0x02};
-    args.object_name = "deleteme.txt";
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.object_name, restored.object_name);
+static nfs3::sattr3 DirAttrs() {
+    nfs3::sattr3 attrs;
+    attrs.mode = 0755;
+    return attrs;
 }
 
-TEST_F(Nfs3RemoveTest, RemoveArgsSpecialChars) {
-    nfs3::REMOVE3args args;
-    args.object_dir.data = {0xFF};
-    args.object_name = "file with spaces and # special.txt";
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.object_name, restored.object_name);
+TEST_F(Nfs3RemoveTest, RemoveExistingFileSucceeds) {
+    const std::string name = unique_name("remove_file");
+
+    auto create = client().create(root(), name, nfs3::createmode3::UNCHECKED, FileAttrs());
+    ASSERT_TRUE(create.has_value()) << "CREATE should succeed before REMOVE";
+
+    auto remove = client().remove(root(), name);
+    ASSERT_TRUE(remove.has_value()) << "REMOVE of created file should succeed";
+
+    auto lookup = client().lookup(root(), name);
+    EXPECT_FALSE(lookup.has_value()) << "removed file should no longer be found";
 }
 
-TEST_F(Nfs3RemoveTest, RemoveResOkRoundTrip) {
-    nfs3::REMOVE3res res;
-    res.status = nfs3::nfsstat3::NFS3_OK;
-    res.resok.emplace();
-    res.resok->dir_wcc.after.follow = true;
-    res.resok->dir_wcc.after.attributes.size = 8192;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
+TEST_F(Nfs3RemoveTest, RemoveNonexistentFileFails) {
+    auto remove = client().remove(root(), unique_name("remove_missing"));
+    EXPECT_FALSE(remove.has_value()) << "REMOVE of nonexistent file should fail";
 }
 
-TEST_F(Nfs3RemoveTest, RemoveResNoEntRoundTrip) {
-    nfs3::REMOVE3res res;
-    res.status = nfs3::nfsstat3::NFS3ERR_NOENT;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
-}
+TEST_F(Nfs3RemoveTest, RemoveDirectoryFailsWithoutDeletingIt) {
+    const std::string name = unique_name("remove_dir");
 
-TEST_F(Nfs3RemoveTest, RemoveResIsDirRoundTrip) {
-    nfs3::REMOVE3res res;
-    res.status = nfs3::nfsstat3::NFS3ERR_ISDIR;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
-}
+    auto mkdir = client().mkdir(root(), name, DirAttrs());
+    ASSERT_TRUE(mkdir.has_value()) << "MKDIR should succeed before REMOVE directory test";
 
-TEST_F(Nfs3RemoveTest, RmdirArgsRoundTrip) {
-    nfs3::RMDIR3args args;
-    args.object_dir.data = {0x01};
-    args.object_name = "emptydir";
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.object_name, restored.object_name);
-}
+    auto remove = client().remove(root(), name);
+    EXPECT_FALSE(remove.has_value()) << "REMOVE on a directory should fail";
 
-TEST_F(Nfs3RemoveTest, RmdirResOkRoundTrip) {
-    nfs3::RMDIR3res res;
-    res.status = nfs3::nfsstat3::NFS3_OK;
-    res.resok.emplace();
-    res.resok->dir_wcc.after.follow = true;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
-}
-
-TEST_F(Nfs3RemoveTest, RmdirResNotEmptyRoundTrip) {
-    nfs3::RMDIR3res res;
-    res.status = nfs3::nfsstat3::NFS3ERR_NOTEMPTY;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
+    auto rmdir = client().rmdir(root(), name);
+    EXPECT_TRUE(rmdir.has_value()) << "cleanup RMDIR should succeed";
 }

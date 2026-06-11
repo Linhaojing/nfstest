@@ -3,90 +3,44 @@
 #include <gtest/gtest.h>
 
 using nfs3::NFS3TestContext;
-using nfs3::xdr::XdrBuffer;
 
 class Nfs3GetattrTest : public NFS3TestContext {};
 
-template<typename T>
-static T XdrRoundTrip(const T& original) {
-    XdrBuffer buf;
-    buf.pack(original);
-    XdrBuffer back(buf.data());
-    T restored;
-    back.unpack(restored);
-    return restored;
+static nfs3::sattr3 RegularFileAttrs() {
+    nfs3::sattr3 attrs;
+    attrs.mode = 0644;
+    attrs.size = 0;
+    return attrs;
 }
 
-TEST_F(Nfs3GetattrTest, GetattrArgsRoundTrip) {
-    nfs3::GETATTR3args args;
-    args.object.data = {0x01, 0x02, 0x03, 0x04};
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.object.data, restored.object.data);
+TEST_F(Nfs3GetattrTest, RootGetattrSucceeds) {
+    auto result = client().getattr(root());
+    ASSERT_TRUE(result.has_value()) << "GETATTR on root should succeed";
+    EXPECT_EQ(result->obj_attributes.type_, nfs3::ftype3::NF3DIR);
+    EXPECT_NE(result->obj_attributes.mode, 0u);
 }
 
-TEST_F(Nfs3GetattrTest, GetattrResOkRoundTrip) {
-    nfs3::GETATTR3res res;
-    res.status = nfs3::nfsstat3::NFS3_OK;
-    res.resok.emplace();
-    res.resok->obj_attributes.type_ = nfs3::ftype3::NF3REG;
-    res.resok->obj_attributes.mode = 0644;
-    res.resok->obj_attributes.nlink = 1;
-    res.resok->obj_attributes.uid = 1000;
-    res.resok->obj_attributes.gid = 1000;
-    res.resok->obj_attributes.size = 4096;
-    res.resok->obj_attributes.used = 4096;
-    res.resok->obj_attributes.fsid = 42;
-    res.resok->obj_attributes.fileid = 12345;
-    res.resok->obj_attributes.atime.seconds = 1700000000;
-    res.resok->obj_attributes.mtime.seconds = 1700000000;
-    res.resok->obj_attributes.ctime.seconds = 1700000000;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
-    ASSERT_EQ(res.resok->obj_attributes.mode, restored.resok->obj_attributes.mode);
+TEST_F(Nfs3GetattrTest, CreatedFileGetattrSucceeds) {
+    const std::string name = unique_name("getattr_file");
+
+    auto create = client().create(root(), name, nfs3::createmode3::UNCHECKED, RegularFileAttrs());
+    ASSERT_TRUE(create.has_value()) << "CREATE should succeed before GETATTR";
+
+    auto result = client().getattr(create->object);
+    EXPECT_TRUE(result.has_value()) << "GETATTR on created file should succeed";
+    if (result.has_value()) {
+        EXPECT_EQ(result->obj_attributes.type_, nfs3::ftype3::NF3REG);
+        EXPECT_EQ(result->obj_attributes.size, 0u);
+    }
+
+    auto remove = client().remove(root(), name);
+    EXPECT_TRUE(remove.has_value()) << "cleanup REMOVE should succeed";
 }
 
-TEST_F(Nfs3GetattrTest, GetattrResErrorRoundTrip) {
-    nfs3::GETATTR3res res;
-    res.status = nfs3::nfsstat3::NFS3ERR_NOENT;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
-}
+TEST_F(Nfs3GetattrTest, InvalidHandleGetattrFails) {
+    nfs3::nfs_fh3 invalid_fh;
+    invalid_fh.data.resize(nfs3::NFS3_FHSIZE, 0);
 
-TEST_F(Nfs3GetattrTest, Fattr3RegularFileRoundTrip) {
-    nfs3::fattr3 attr;
-    attr.type_ = nfs3::ftype3::NF3REG;
-    attr.mode = 0755;
-    attr.nlink = 3;
-    attr.uid = 65534;
-    attr.gid = 65534;
-    attr.size = 102400;
-    attr.used = 102400;
-    attr.fsid = 99;
-    attr.fileid = 999;
-    attr.atime.seconds = 1700000000;
-    attr.atime.nseconds = 500000000;
-    attr.mtime.seconds = 1700000001;
-    attr.mtime.nseconds = 0;
-    attr.ctime.seconds = 1700000002;
-    attr.ctime.nseconds = 100000000;
-    auto restored = XdrRoundTrip(attr);
-    ASSERT_EQ(attr.type_, restored.type_);
-    ASSERT_EQ(attr.mode, restored.mode);
-    ASSERT_EQ(attr.size, restored.size);
-}
-
-TEST_F(Nfs3GetattrTest, Fattr3DirectoryRoundTrip) {
-    nfs3::fattr3 attr;
-    attr.type_ = nfs3::ftype3::NF3DIR;
-    attr.mode = 0555;
-    attr.nlink = 15;
-    attr.uid = 0;
-    attr.gid = 0;
-    attr.size = 4096;
-    attr.used = 4096;
-    attr.fsid = 99;
-    attr.fileid = 2;
-    auto restored = XdrRoundTrip(attr);
-    ASSERT_EQ(attr.type_, restored.type_);
-    ASSERT_EQ(attr.nlink, restored.nlink);
+    auto result = client().getattr(invalid_fh);
+    EXPECT_FALSE(result.has_value()) << "GETATTR with an invalid handle should fail";
 }

@@ -1,140 +1,25 @@
 #include "test_framework.h"
+#include "nfs3_server_test.h"
 #include "nfstest/rpc_client.h"
 #include "nfs3_c/nfs3_xdr.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
-#include <unistd.h>
 
-#define RPCBPROG 100000U
-#define RPCBVERS 2U
-#define RPCBPROC_GETPORT 3U
-#define IPPROTO_TCP_NUM 6U
-
-#define MOUNT_PROGRAM 100005U
-#define MOUNT_V3 3U
-#define MOUNTPROC3_MNT 1U
-
-#define TEST_HOST "127.0.0.1"
-#define NFS_PORT 2049U
-#define EXPORT_PATH "/srv/nfs"
-
-static int rpc_call_bytes(
-    const char* host,
-    uint16_t port,
-    uint32_t prog,
-    uint32_t vers,
-    uint32_t proc,
-    const uint8_t* args,
-    size_t args_len,
-    uint8_t** resp,
-    size_t* resp_len
-) {
-    nfstest_rpc_client_t* client = nfstest_rpc_connect(host, port, 3000);
-    if (!client) {
-        printf("\n  FAIL  %s: connect rpc service (line %d)\n", current_test_name, __LINE__);
-        tests_failed++;
-        return NFSTEST_RPC_CONN_ERR;
-    }
-
-    int status = nfstest_rpc_call(
-        client,
-        prog,
-        vers,
-        proc,
-        args,
-        args_len,
-        resp,
-        resp_len,
-        3000
-    );
-
-    nfstest_rpc_disconnect(client);
-    return status;
-}
-
-static uint16_t get_rpc_service_port(uint32_t prog, uint32_t vers) {
-    xdr_buf_t args;
-    xdr_buf_init(&args);
-    xdr_pack_uint32(&args, prog);
-    xdr_pack_uint32(&args, vers);
-    xdr_pack_uint32(&args, IPPROTO_TCP_NUM);
-    xdr_pack_uint32(&args, 0);
-
-    uint8_t* resp = NULL;
-    size_t resp_len = 0;
-    int status = rpc_call_bytes(
-        TEST_HOST,
-        111,
-        RPCBPROG,
-        RPCBVERS,
-        RPCBPROC_GETPORT,
-        xdr_buf_data(&args),
-        xdr_buf_size(&args),
-        &resp,
-        &resp_len
-    );
-    if (status != NFSTEST_RPC_OK || resp == NULL) {
-        printf("\n  FAIL  %s: portmap GETPORT should succeed (line %d)\n", current_test_name, __LINE__);
-        tests_failed++;
-        free(resp);
-        xdr_buf_destroy(&args);
-        return 0;
-    }
-
-    xdr_buf_t body;
-    xdr_buf_init_copy(&body, resp, resp_len);
-    uint32_t port = 0;
-    xdr_unpack_uint32(&body, &port);
-
-    free(resp);
-    xdr_buf_destroy(&body);
-    xdr_buf_destroy(&args);
-
-    if (port == 0 || port > 65535) {
-        printf("\n  FAIL  %s: service port should be valid (line %d)\n", current_test_name, __LINE__);
-        tests_failed++;
-        return 0;
-    }
-    return (uint16_t)port;
-}
+#define REQUIRE_SERVER_OR_SKIP() do { \
+    if (!nfs3_server_is_configured()) { \
+        if (nfs3_server_require_server()) { \
+            ASSERT_TRUE(0, nfs3_server_skip_message()); \
+        } \
+        TEST_SKIP(nfs3_server_skip_message()); \
+    } \
+} while(0)
 
 static void mount_root(nfs_fh3_t* root_fh) {
-    uint16_t mount_port = get_rpc_service_port(MOUNT_PROGRAM, MOUNT_V3);
-
-    xdr_buf_t args;
-    xdr_buf_init(&args);
-    xdr_pack_cstring(&args, EXPORT_PATH);
-
-    uint8_t* resp = NULL;
-    size_t resp_len = 0;
-    int status = rpc_call_bytes(
-        TEST_HOST,
-        mount_port,
-        MOUNT_PROGRAM,
-        MOUNT_V3,
-        MOUNTPROC3_MNT,
-        xdr_buf_data(&args),
-        xdr_buf_size(&args),
-        &resp,
-        &resp_len
-    );
-    ASSERT_EQ_INT(status, NFSTEST_RPC_OK, "MOUNT MNT should succeed");
-    ASSERT_TRUE(resp != NULL, "mount response data");
-
-    xdr_buf_t body;
-    xdr_buf_init_copy(&body, resp, resp_len);
-    uint32_t mount_status = 0;
-    xdr_unpack_uint32(&body, &mount_status);
-    ASSERT_EQ_U32(mount_status, 0, "MOUNT status should be OK");
-    xdr_unpack_nfs_fh3(&body, root_fh);
+    int status = nfs3_mount_root(root_fh);
+    ASSERT_EQ_INT(status, NFSTEST_RPC_OK, "MOUNT root should succeed");
     ASSERT_TRUE(!nfs_fh3_is_empty(root_fh), "root file handle should not be empty");
-
-    free(resp);
-    xdr_buf_destroy(&body);
-    xdr_buf_destroy(&args);
 }
 
 static int nfs_call_xdr(
@@ -143,63 +28,15 @@ static int nfs_call_xdr(
     uint8_t** resp,
     size_t* resp_len
 ) {
-    return rpc_call_bytes(
-        TEST_HOST,
-        NFS_PORT,
-        NFS_PROGRAM,
-        NFS_V3,
-        proc,
-        xdr_buf_data(args),
-        xdr_buf_size(args),
-        resp,
-        resp_len
-    );
-}
-
-static int remove_file_by_name(const nfs_fh3_t* root_fh, const char* filename) {
-    xdr_buf_t args;
-    xdr_buf_init(&args);
-
-    REMOVE3args_t remove_args;
-    remove3args_init(&remove_args);
-    nfs_fh3_set(&remove_args.object_dir, root_fh->data, root_fh->len);
-    remove3args_set_name(&remove_args, filename);
-    xdr_pack_REMOVE3args(&args, &remove_args);
-
-    uint8_t* resp = NULL;
-    size_t resp_len = 0;
-    int status = nfs_call_xdr(NFSPROC3_REMOVE, &args, &resp, &resp_len);
-    int nfs_status = NFS3ERR_IO;
-    if (status == NFSTEST_RPC_OK && resp != NULL) {
-        xdr_buf_t body;
-        xdr_buf_init_copy(&body, resp, resp_len);
-        REMOVE3res_t remove_res;
-        memset(&remove_res, 0, sizeof(remove_res));
-        xdr_unpack_REMOVE3res(&body, &remove_res);
-        nfs_status = (int)remove_res.status;
-        xdr_buf_destroy(&body);
-    }
-
-    free(resp);
-    remove3args_destroy(&remove_args);
-    xdr_buf_destroy(&args);
-    return status == NFSTEST_RPC_OK ? nfs_status : status;
+    return nfs3_server_call(proc, args, resp, resp_len);
 }
 
 static void test_nfs_null_rpc_allows_empty_args(void) {
+    REQUIRE_SERVER_OR_SKIP();
+
     uint8_t* resp_data = NULL;
     size_t resp_len = 0;
-    int status = rpc_call_bytes(
-        TEST_HOST,
-        NFS_PORT,
-        NFS_PROGRAM,
-        NFS_V3,
-        NFSPROC3_NULL,
-        NULL,
-        0,
-        &resp_data,
-        &resp_len
-    );
+    int status = nfs3_server_call(NFSPROC3_NULL, NULL, &resp_data, &resp_len);
 
     ASSERT_EQ_INT(status, NFSTEST_RPC_OK, "NFS NULL RPC should accept empty args");
     ASSERT_TRUE(resp_data == NULL, "empty RPC response should not allocate data");
@@ -210,6 +47,8 @@ static void test_nfs_null_rpc_allows_empty_args(void) {
 }
 
 static void test_mount_returns_root_file_handle(void) {
+    REQUIRE_SERVER_OR_SKIP();
+
     nfs_fh3_t root_fh;
     nfs_fh3_init(&root_fh);
 
@@ -223,6 +62,8 @@ static void test_mount_returns_root_file_handle(void) {
 }
 
 static void test_getattr_access_fsinfo_fsstat_on_root(void) {
+    REQUIRE_SERVER_OR_SKIP();
+
     nfs_fh3_t root_fh;
     nfs_fh3_init(&root_fh);
     mount_root(&root_fh);
@@ -318,12 +159,14 @@ static void test_getattr_access_fsinfo_fsstat_on_root(void) {
 }
 
 static void test_create_write_read_remove_file(void) {
+    REQUIRE_SERVER_OR_SKIP();
+
     nfs_fh3_t root_fh;
     nfs_fh3_init(&root_fh);
     mount_root(&root_fh);
 
     char filename[128];
-    snprintf(filename, sizeof(filename), "c_real_rpc_%ld_%ld.txt", (long)getpid(), (long)time(NULL));
+    nfs3_unique_name("c_real_rpc", filename, sizeof(filename));
     const uint8_t payload[] = {'H', 'e', 'l', 'l', 'o', ' ', 'R', 'P', 'C'};
     int created = 0;
     int failed = 0;
@@ -437,7 +280,7 @@ static void test_create_write_read_remove_file(void) {
         goto cleanup;
     }
 
-    status = remove_file_by_name(&root_fh, filename);
+    status = nfs3_remove_if_test_file(&root_fh, filename);
     if (status != NFS3_OK) {
         printf("\n  FAIL  %s: REMOVE should return OK - expected %d, got %d (line %d)\n",
                current_test_name, NFS3_OK, status, __LINE__);
@@ -449,7 +292,7 @@ static void test_create_write_read_remove_file(void) {
 
 cleanup:
     if (created) {
-        remove_file_by_name(&root_fh, filename);
+        nfs3_remove_if_test_file(&root_fh, filename);
     }
     free(resp);
     xdr_buf_destroy(&body);

@@ -1,144 +1,149 @@
 #include "test_framework.h"
+#include "nfs3_server_test.h"
+#include "nfstest/rpc_client.h"
 #include "nfs3_c/nfs3_xdr.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-static void test_create_args_roundtrip(void) {
-    CREATE3args_t args;
-    create3args_init(&args);
-    uint8_t fh[] = {0x01, 0x02, 0x03};
-    nfs_fh3_set(&args.where_dir, fh, 3);
-    create3args_set_name(&args, "newfile.txt");
-    args.how_mode = GUARDED;
-    args.how_attributes.mode_set = 1;
-    args.how_attributes.mode = 0644;
+#define REQUIRE_SERVER_OR_SKIP() do { \
+    if (!nfs3_server_is_configured()) { \
+        if (nfs3_server_require_server()) { \
+            ASSERT_TRUE(0, nfs3_server_skip_message()); \
+        } \
+        TEST_SKIP(nfs3_server_skip_message()); \
+    } \
+} while(0)
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_CREATE3args(&buf, &args);
-    xdr_buf_reset_read(&buf);
-
-    CREATE3args_t restored;
-    create3args_init(&restored);
-    xdr_unpack_CREATE3args(&buf, &restored);
-
-    ASSERT_EQ_U32(restored.where_dir.len, 3, "fh length");
-    ASSERT_STREQ(restored.where_name, "newfile.txt", "name");
-    ASSERT_EQ_U32((uint32_t)restored.how_mode, (uint32_t)GUARDED, "mode");
-    ASSERT_EQ_INT(restored.how_attributes.mode_set, 1, "mode_set");
-    ASSERT_EQ_U32(restored.how_attributes.mode, 0644, "mode val");
-
-    create3args_destroy(&args);
-    create3args_destroy(&restored);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+static void mount_root(nfs_fh3_t* root_fh) {
+    int status = nfs3_mount_root(root_fh);
+    ASSERT_EQ_INT(status, NFSTEST_RPC_OK, "MOUNT root should succeed");
+    ASSERT_TRUE(!nfs_fh3_is_empty(root_fh), "root file handle should not be empty");
 }
 
-static void test_create_res_ok_roundtrip(void) {
-    CREATE3res_t res;
-    create3res_init(&res);
-    res.status = NFS3_OK;
-    res.has_resok = 1;
-    res.resok.obj_attributes.follow = 1;
-    res.resok.obj_attributes.attributes.type = NF3REG;
-    uint8_t fh[] = {0xAA, 0xBB};
-    nfs_fh3_set(&res.resok.object, fh, 2);
+static int create_file(const nfs_fh3_t* root_fh, const char* filename, nfs_fh3_t* file_fh) {
+    xdr_buf_t args;
+    xdr_buf_init(&args);
+    CREATE3args_t create_args;
+    create3args_init(&create_args);
+    nfs_fh3_set(&create_args.where_dir, root_fh->data, root_fh->len);
+    create3args_set_name(&create_args, filename);
+    create_args.how_mode = UNCHECKED;
+    create_args.how_attributes.mode_set = 1;
+    create_args.how_attributes.mode = 0644;
+    xdr_pack_CREATE3args(&args, &create_args);
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_CREATE3res(&buf, &res);
-    xdr_buf_reset_read(&buf);
+    uint8_t* resp = NULL;
+    size_t resp_len = 0;
+    int rpc_status = nfs3_server_call(NFSPROC3_CREATE, &args, &resp, &resp_len);
+    int nfs_status = NFS3ERR_IO;
+    if (rpc_status == NFSTEST_RPC_OK && resp != NULL) {
+        xdr_buf_t body;
+        xdr_buf_init_copy(&body, resp, resp_len);
+        CREATE3res_t create_res;
+        create3res_init(&create_res);
+        xdr_unpack_CREATE3res(&body, &create_res);
+        nfs_status = (int)create_res.status;
+        if (create_res.status == NFS3_OK && !nfs_fh3_is_empty(&create_res.resok.object)) {
+            nfs_fh3_set(file_fh, create_res.resok.object.data, create_res.resok.object.len);
+        }
+        create3res_destroy(&create_res);
+        xdr_buf_destroy(&body);
+    }
 
-    CREATE3res_t restored;
-    create3res_init(&restored);
-    xdr_unpack_CREATE3res(&buf, &restored);
-
-    ASSERT_EQ_U32((uint32_t)restored.status, (uint32_t)NFS3_OK, "status");
-    ASSERT_EQ_U32(restored.resok.object.len, 2, "object fh len");
-
-    create3res_destroy(&res);
-    create3res_destroy(&restored);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+    free(resp);
+    create3args_destroy(&create_args);
+    xdr_buf_destroy(&args);
+    return rpc_status == NFSTEST_RPC_OK ? nfs_status : rpc_status;
 }
 
-static void test_remove_args_roundtrip(void) {
-    REMOVE3args_t args;
-    remove3args_init(&args);
-    uint8_t fh[] = {0x01, 0x02};
-    nfs_fh3_set(&args.object_dir, fh, 2);
-    remove3args_set_name(&args, "file_to_remove.txt");
+static int access_file(const nfs_fh3_t* file_fh, uint32_t mask, ACCESS3res_t* access_res) {
+    xdr_buf_t args;
+    xdr_buf_init(&args);
+    ACCESS3args_t access_args;
+    memset(&access_args, 0, sizeof(access_args));
+    nfs_fh3_init(&access_args.object);
+    nfs_fh3_set(&access_args.object, file_fh->data, file_fh->len);
+    access_args.access = mask;
+    xdr_pack_ACCESS3args(&args, &access_args);
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_REMOVE3args(&buf, &args);
-    xdr_buf_reset_read(&buf);
+    uint8_t* resp = NULL;
+    size_t resp_len = 0;
+    int status = nfs3_server_call(NFSPROC3_ACCESS, &args, &resp, &resp_len);
+    if (status == NFSTEST_RPC_OK && resp != NULL) {
+        xdr_buf_t body;
+        xdr_buf_init_copy(&body, resp, resp_len);
+        xdr_unpack_ACCESS3res(&body, access_res);
+        xdr_buf_destroy(&body);
+    }
 
-    REMOVE3args_t restored;
-    remove3args_init(&restored);
-    xdr_unpack_REMOVE3args(&buf, &restored);
-
-    ASSERT_EQ_U32(restored.object_dir.len, 2, "fh length");
-    ASSERT_STREQ(restored.object_name, "file_to_remove.txt", "name");
-
-    remove3args_destroy(&args);
-    remove3args_destroy(&restored);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+    free(resp);
+    nfs_fh3_destroy(&access_args.object);
+    xdr_buf_destroy(&args);
+    return status;
 }
 
-static void test_remove_res_error(void) {
-    REMOVE3res_t res;
-    memset(&res, 0, sizeof(res));
-    res.status = NFS3ERR_NOENT;
-
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_REMOVE3res(&buf, &res);
-    xdr_buf_reset_read(&buf);
-
-    REMOVE3res_t restored;
-    memset(&restored, 0, sizeof(restored));
-    xdr_unpack_REMOVE3res(&buf, &restored);
-
-    ASSERT_EQ_U32((uint32_t)restored.status, (uint32_t)NFS3ERR_NOENT, "status");
-
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+static int remove_file(const nfs_fh3_t* root_fh, const char* filename) {
+    return nfs3_remove_if_test_file(root_fh, filename);
 }
 
-static void test_access_args_roundtrip(void) {
-    ACCESS3args_t args;
-    memset(&args, 0, sizeof(args));
-    nfs_fh3_init(&args.object);
-    uint8_t fh[] = {0x01};
-    nfs_fh3_set(&args.object, fh, 1);
-    args.access = NFS3_ACCESS_READ | NFS3_ACCESS_LOOKUP;
+static void test_create_access_remove_file(void) {
+    REQUIRE_SERVER_OR_SKIP();
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_ACCESS3args(&buf, &args);
-    xdr_buf_reset_read(&buf);
+    nfs_fh3_t root_fh;
+    nfs_fh3_t file_fh;
+    nfs_fh3_init(&root_fh);
+    nfs_fh3_init(&file_fh);
+    char filename[128];
+    nfs3_unique_name("c_create", filename, sizeof(filename));
+    int created = 0;
+    int failed = 0;
 
-    ACCESS3args_t restored;
-    memset(&restored, 0, sizeof(restored));
-    nfs_fh3_init(&restored.object);
-    xdr_unpack_ACCESS3args(&buf, &restored);
+    mount_root(&root_fh);
+    int status = create_file(&root_fh, filename, &file_fh);
+    if (status != NFS3_OK || nfs_fh3_is_empty(&file_fh)) {
+        printf("\n  FAIL  %s: CREATE should return OK and file handle (status %d, line %d)\n", current_test_name, status, __LINE__);
+        tests_failed++;
+        failed = 1;
+        goto cleanup;
+    }
+    created = 1;
 
-    ASSERT_EQ_U32(restored.object.len, 1, "fh length");
-    ASSERT_EQ_U32(restored.access, args.access, "access mask");
+    ACCESS3res_t access_res;
+    memset(&access_res, 0, sizeof(access_res));
+    status = access_file(&file_fh, NFS3_ACCESS_READ | NFS3_ACCESS_MODIFY | NFS3_ACCESS_EXTEND, &access_res);
+    if (status != NFSTEST_RPC_OK || access_res.status != NFS3_OK || (access_res.resok.access & NFS3_ACCESS_READ) == 0) {
+        printf("\n  FAIL  %s: ACCESS should allow reading created file (rpc/status/access %d/%u/%u, line %d)\n",
+               current_test_name, status, (uint32_t)access_res.status, access_res.resok.access, __LINE__);
+        tests_failed++;
+        failed = 1;
+        goto cleanup;
+    }
 
-    nfs_fh3_destroy(&args.object);
-    nfs_fh3_destroy(&restored.object);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+    status = remove_file(&root_fh, filename);
+    if (status != NFS3_OK) {
+        printf("\n  FAIL  %s: REMOVE should return OK (status %d, line %d)\n", current_test_name, status, __LINE__);
+        tests_failed++;
+        failed = 1;
+        goto cleanup;
+    }
+    created = 0;
+
+cleanup:
+    if (created) {
+        nfs3_remove_if_test_file(&root_fh, filename);
+    }
+    nfs_fh3_destroy(&file_fh);
+    nfs_fh3_destroy(&root_fh);
+    if (!failed) {
+        TEST_PASS();
+    }
 }
 
 int main(void) {
-    printf("=== NFSv3 CREATE/REMOVE/ACCESS Tests (C) ===\n\n");
-    RUN_TEST(test_create_args_roundtrip);
-    RUN_TEST(test_create_res_ok_roundtrip);
-    RUN_TEST(test_remove_args_roundtrip);
-    RUN_TEST(test_remove_res_error);
-    RUN_TEST(test_access_args_roundtrip);
+    printf("=== NFSv3 CREATE/ACCESS/REMOVE Server Tests (C) ===\n\n");
+    RUN_TEST(test_create_access_remove_file);
     PRINT_SUMMARY();
     return tests_failed;
 }

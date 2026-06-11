@@ -1,188 +1,181 @@
 #include "test_framework.h"
+#include "nfs3_server_test.h"
+#include "nfstest/rpc_client.h"
 #include "nfs3_c/nfs3_xdr.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-static void test_read_args_roundtrip(void) {
-    READ3args_t args;
-    memset(&args, 0, sizeof(args));
-    nfs_fh3_init(&args.file);
-    uint8_t fh[] = {0x01, 0x02, 0x03};
-    nfs_fh3_set(&args.file, fh, 3);
-    args.offset = 1024;
-    args.count = 4096;
+#define REQUIRE_SERVER_OR_SKIP() do { \
+    if (!nfs3_server_is_configured()) { \
+        if (nfs3_server_require_server()) { \
+            ASSERT_TRUE(0, nfs3_server_skip_message()); \
+        } \
+        TEST_SKIP(nfs3_server_skip_message()); \
+    } \
+} while(0)
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_READ3args(&buf, &args);
-    xdr_buf_reset_read(&buf);
-
-    READ3args_t restored;
-    memset(&restored, 0, sizeof(restored));
-    nfs_fh3_init(&restored.file);
-    xdr_unpack_READ3args(&buf, &restored);
-
-    ASSERT_EQ_U32(restored.file.len, 3, "fh length");
-    ASSERT_EQ_U64(restored.offset, 1024, "offset");
-    ASSERT_EQ_U32(restored.count, 4096, "count");
-
-    nfs_fh3_destroy(&args.file);
-    nfs_fh3_destroy(&restored.file);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+static void mount_root(nfs_fh3_t* root_fh) {
+    int status = nfs3_mount_root(root_fh);
+    ASSERT_EQ_INT(status, NFSTEST_RPC_OK, "MOUNT root should succeed");
+    ASSERT_TRUE(!nfs_fh3_is_empty(root_fh), "root file handle should not be empty");
 }
 
-static void test_read_args_max_count(void) {
-    READ3args_t args;
-    memset(&args, 0, sizeof(args));
-    nfs_fh3_init(&args.file);
-    uint8_t fh[] = {0x01};
-    nfs_fh3_set(&args.file, fh, 1);
-    args.offset = 0;
-    args.count = 1048576;
+static int create_file(const nfs_fh3_t* root_fh, const char* filename, nfs_fh3_t* file_fh) {
+    xdr_buf_t args;
+    xdr_buf_init(&args);
+    CREATE3args_t create_args;
+    create3args_init(&create_args);
+    nfs_fh3_set(&create_args.where_dir, root_fh->data, root_fh->len);
+    create3args_set_name(&create_args, filename);
+    create_args.how_mode = UNCHECKED;
+    create_args.how_attributes.mode_set = 1;
+    create_args.how_attributes.mode = 0644;
+    xdr_pack_CREATE3args(&args, &create_args);
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_READ3args(&buf, &args);
-    xdr_buf_reset_read(&buf);
+    uint8_t* resp = NULL;
+    size_t resp_len = 0;
+    int rpc_status = nfs3_server_call(NFSPROC3_CREATE, &args, &resp, &resp_len);
+    int nfs_status = NFS3ERR_IO;
+    if (rpc_status == NFSTEST_RPC_OK && resp != NULL) {
+        xdr_buf_t body;
+        xdr_buf_init_copy(&body, resp, resp_len);
+        CREATE3res_t create_res;
+        create3res_init(&create_res);
+        xdr_unpack_CREATE3res(&body, &create_res);
+        nfs_status = (int)create_res.status;
+        if (create_res.status == NFS3_OK && !nfs_fh3_is_empty(&create_res.resok.object)) {
+            nfs_fh3_set(file_fh, create_res.resok.object.data, create_res.resok.object.len);
+        }
+        create3res_destroy(&create_res);
+        xdr_buf_destroy(&body);
+    }
 
-    READ3args_t restored;
-    memset(&restored, 0, sizeof(restored));
-    nfs_fh3_init(&restored.file);
-    xdr_unpack_READ3args(&buf, &restored);
-
-    ASSERT_EQ_U32(restored.count, 1048576, "max count");
-
-    nfs_fh3_destroy(&args.file);
-    nfs_fh3_destroy(&restored.file);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+    free(resp);
+    create3args_destroy(&create_args);
+    xdr_buf_destroy(&args);
+    return rpc_status == NFSTEST_RPC_OK ? nfs_status : rpc_status;
 }
 
-static void test_read_res_ok_roundtrip(void) {
-    READ3res_t res;
-    read3res_init(&res);
-    res.status = NFS3_OK;
-    res.has_resok = 1;
-    res.resok.file_attributes.follow = 1;
-    res.resok.file_attributes.attributes.type = NF3REG;
-    res.resok.file_attributes.attributes.size = 8192;
-    res.resok.count = 256;
-    res.resok.eof = 0;
-    uint8_t d[] = {0xDE, 0xAD, 0xBE, 0xEF};
-    res.resok.data = (uint8_t*)malloc(4);
-    memcpy(res.resok.data, d, 4);
-    res.resok.data_len = 4;
+static int write_file(const nfs_fh3_t* file_fh, const uint8_t* payload, uint32_t payload_len) {
+    xdr_buf_t args;
+    xdr_buf_init(&args);
+    WRITE3args_t write_args;
+    write3args_init(&write_args);
+    nfs_fh3_set(&write_args.file, file_fh->data, file_fh->len);
+    write_args.offset = 0;
+    write_args.count = payload_len;
+    write_args.stable = DATA_SYNC;
+    write_args.data = (uint8_t*)malloc(payload_len);
+    memcpy(write_args.data, payload, payload_len);
+    write_args.data_len = payload_len;
+    xdr_pack_WRITE3args(&args, &write_args);
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_READ3res(&buf, &res);
-    xdr_buf_reset_read(&buf);
+    uint8_t* resp = NULL;
+    size_t resp_len = 0;
+    int rpc_status = nfs3_server_call(NFSPROC3_WRITE, &args, &resp, &resp_len);
+    int nfs_status = NFS3ERR_IO;
+    if (rpc_status == NFSTEST_RPC_OK && resp != NULL) {
+        xdr_buf_t body;
+        xdr_buf_init_copy(&body, resp, resp_len);
+        WRITE3res_t write_res;
+        memset(&write_res, 0, sizeof(write_res));
+        xdr_unpack_WRITE3res(&body, &write_res);
+        nfs_status = (write_res.status == NFS3_OK && write_res.resok.count == payload_len) ? NFS3_OK : (int)write_res.status;
+        xdr_buf_destroy(&body);
+    }
 
-    READ3res_t restored;
-    read3res_init(&restored);
-    xdr_unpack_READ3res(&buf, &restored);
-
-    ASSERT_EQ_U32((uint32_t)restored.status, (uint32_t)NFS3_OK, "status");
-    ASSERT_EQ_U64(restored.resok.count, 256, "count");
-    ASSERT_EQ_INT(restored.resok.eof, 0, "eof");
-    ASSERT_EQ_U32(restored.resok.data_len, 4, "data length");
-    ASSERT_MEMEQ(restored.resok.data, d, 4, "data");
-
-    read3res_destroy(&res);
-    read3res_destroy(&restored);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+    free(resp);
+    write3args_destroy(&write_args);
+    xdr_buf_destroy(&args);
+    return rpc_status == NFSTEST_RPC_OK ? nfs_status : rpc_status;
 }
 
-static void test_write_args_roundtrip(void) {
-    WRITE3args_t args;
-    write3args_init(&args);
-    uint8_t fh[] = {0x01, 0x02, 0x03};
-    nfs_fh3_set(&args.file, fh, 3);
-    args.offset = 2048;
-    args.stable = UNSTABLE;
-    uint8_t d[] = {'h', 'e', 'l', 'l', 'o'};
-    args.data = (uint8_t*)malloc(5);
-    memcpy(args.data, d, 5);
-    args.data_len = 5;
-    args.count = 5;
+static int read_file(const nfs_fh3_t* file_fh, READ3res_t* read_res) {
+    xdr_buf_t args;
+    xdr_buf_init(&args);
+    READ3args_t read_args;
+    memset(&read_args, 0, sizeof(read_args));
+    nfs_fh3_init(&read_args.file);
+    nfs_fh3_set(&read_args.file, file_fh->data, file_fh->len);
+    read_args.offset = 0;
+    read_args.count = 1024;
+    xdr_pack_READ3args(&args, &read_args);
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_WRITE3args(&buf, &args);
-    xdr_buf_reset_read(&buf);
+    uint8_t* resp = NULL;
+    size_t resp_len = 0;
+    int status = nfs3_server_call(NFSPROC3_READ, &args, &resp, &resp_len);
+    if (status == NFSTEST_RPC_OK && resp != NULL) {
+        xdr_buf_t body;
+        xdr_buf_init_copy(&body, resp, resp_len);
+        xdr_unpack_READ3res(&body, read_res);
+        xdr_buf_destroy(&body);
+    }
 
-    WRITE3args_t restored;
-    write3args_init(&restored);
-    xdr_unpack_WRITE3args(&buf, &restored);
-
-    ASSERT_EQ_U32(restored.file.len, 3, "fh length");
-    ASSERT_EQ_U64(restored.offset, 2048, "offset");
-    ASSERT_EQ_U32((uint32_t)restored.stable, (uint32_t)UNSTABLE, "stable");
-    ASSERT_EQ_U32(restored.data_len, 5, "data length");
-    ASSERT_MEMEQ(restored.data, d, 5, "data");
-
-    write3args_destroy(&args);
-    write3args_destroy(&restored);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+    free(resp);
+    nfs_fh3_destroy(&read_args.file);
+    xdr_buf_destroy(&args);
+    return status;
 }
 
-static void test_write_res_ok_roundtrip(void) {
-    WRITE3res_t res;
-    memset(&res, 0, sizeof(res));
-    res.status = NFS3_OK;
-    res.has_resok = 1;
-    res.resok.file_wcc.after.follow = 1;
-    res.resok.file_wcc.after.attributes.size = 8192;
-    res.resok.count = 1024;
-    res.resok.committed = FILE_SYNC;
+static void test_create_write_read_content_cleanup(void) {
+    REQUIRE_SERVER_OR_SKIP();
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_WRITE3res(&buf, &res);
-    xdr_buf_reset_read(&buf);
+    nfs_fh3_t root_fh;
+    nfs_fh3_t file_fh;
+    nfs_fh3_init(&root_fh);
+    nfs_fh3_init(&file_fh);
+    char filename[128];
+    nfs3_unique_name("c_readwrite", filename, sizeof(filename));
+    const uint8_t payload[] = "C NFSv3 read/write payload";
+    int created = 0;
+    int failed = 0;
 
-    WRITE3res_t restored;
-    memset(&restored, 0, sizeof(restored));
-    xdr_unpack_WRITE3res(&buf, &restored);
+    mount_root(&root_fh);
+    int status = create_file(&root_fh, filename, &file_fh);
+    if (status != NFS3_OK || nfs_fh3_is_empty(&file_fh)) {
+        printf("\n  FAIL  %s: CREATE should return OK and file handle (status %d, line %d)\n", current_test_name, status, __LINE__);
+        tests_failed++;
+        failed = 1;
+        goto cleanup;
+    }
+    created = 1;
 
-    ASSERT_EQ_U32((uint32_t)restored.status, (uint32_t)NFS3_OK, "status");
-    ASSERT_EQ_U32(restored.resok.count, 1024, "count");
-    ASSERT_EQ_U32((uint32_t)restored.resok.committed, (uint32_t)FILE_SYNC, "committed");
+    status = write_file(&file_fh, payload, (uint32_t)sizeof(payload));
+    if (status != NFS3_OK) {
+        printf("\n  FAIL  %s: WRITE should return OK and full count (status %d, line %d)\n", current_test_name, status, __LINE__);
+        tests_failed++;
+        failed = 1;
+        goto cleanup;
+    }
 
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
-}
+    READ3res_t read_res;
+    read3res_init(&read_res);
+    status = read_file(&file_fh, &read_res);
+    if (status != NFSTEST_RPC_OK || read_res.status != NFS3_OK || read_res.resok.data_len != (uint32_t)sizeof(payload) ||
+        memcmp(read_res.resok.data, payload, sizeof(payload)) != 0) {
+        printf("\n  FAIL  %s: READ should return written content (rpc/status/len %d/%u/%u, line %d)\n",
+               current_test_name, status, (uint32_t)read_res.status, read_res.resok.data_len, __LINE__);
+        tests_failed++;
+        failed = 1;
+    }
+    read3res_destroy(&read_res);
 
-static void test_write_res_error_roundtrip(void) {
-    WRITE3res_t res;
-    memset(&res, 0, sizeof(res));
-    res.status = NFS3ERR_ROFS;
-
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_WRITE3res(&buf, &res);
-    xdr_buf_reset_read(&buf);
-
-    WRITE3res_t restored;
-    memset(&restored, 0, sizeof(restored));
-    xdr_unpack_WRITE3res(&buf, &restored);
-
-    ASSERT_EQ_U32((uint32_t)restored.status, (uint32_t)NFS3ERR_ROFS, "status");
-
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+cleanup:
+    if (created) {
+        nfs3_remove_if_test_file(&root_fh, filename);
+    }
+    nfs_fh3_destroy(&file_fh);
+    nfs_fh3_destroy(&root_fh);
+    if (!failed) {
+        TEST_PASS();
+    }
 }
 
 int main(void) {
-    printf("=== NFSv3 READ/WRITE Tests (C) ===\n\n");
-    RUN_TEST(test_read_args_roundtrip);
-    RUN_TEST(test_read_args_max_count);
-    RUN_TEST(test_read_res_ok_roundtrip);
-    RUN_TEST(test_write_args_roundtrip);
-    RUN_TEST(test_write_res_ok_roundtrip);
-    RUN_TEST(test_write_res_error_roundtrip);
+    printf("=== NFSv3 READ/WRITE Server Tests (C) ===\n\n");
+    RUN_TEST(test_create_write_read_content_cleanup);
     PRINT_SUMMARY();
     return tests_failed;
 }

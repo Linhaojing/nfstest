@@ -35,4 +35,5 @@ target_link_libraries(nfs3_test_core_c PUBLIC shared_rpc)
 
 target_compile_features(nfs3_test_core_c PUBLIC c_std_11)
 
+enable_testing()
 add_subdirectory(tests)

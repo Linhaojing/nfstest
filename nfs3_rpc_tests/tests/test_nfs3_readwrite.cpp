@@ -1,123 +1,39 @@
 #include "nfs3/test_context.hpp"
 #include "nfs3/nfs3_types.hpp"
 #include <gtest/gtest.h>
+#include <vector>
 
 using nfs3::NFS3TestContext;
-using nfs3::xdr::XdrBuffer;
 
 class Nfs3ReadWriteTest : public NFS3TestContext {};
 
-template<typename T>
-static T XdrRoundTrip(const T& original) {
-    XdrBuffer buf;
-    buf.pack(original);
-    XdrBuffer back(buf.data());
-    T restored;
-    back.unpack(restored);
-    return restored;
+static nfs3::sattr3 RegularFileAttrs() {
+    nfs3::sattr3 attrs;
+    attrs.mode = 0644;
+    attrs.size = 0;
+    return attrs;
 }
 
-TEST_F(Nfs3ReadWriteTest, ReadArgsRoundTrip) {
-    nfs3::READ3args args;
-    args.file.data = {0x01, 0x02, 0x03};
-    args.offset = 1024;
-    args.count = 4096;
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.file.data, restored.file.data);
-    ASSERT_EQ(args.offset, restored.offset);
-    ASSERT_EQ(args.count, restored.count);
-}
+TEST_F(Nfs3ReadWriteTest, CreateWriteReadOffsetAndCleanup) {
+    const std::string name = unique_name("readwrite_file");
 
-TEST_F(Nfs3ReadWriteTest, ReadArgsZeroOffset) {
-    nfs3::READ3args args;
-    args.file.data = {0xFF};
-    args.offset = 0;
-    args.count = 512;
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.offset, restored.offset);
-}
+    auto create = client().create(root(), name, nfs3::createmode3::UNCHECKED, RegularFileAttrs());
+    ASSERT_TRUE(create.has_value()) << "CREATE should succeed";
 
-TEST_F(Nfs3ReadWriteTest, ReadArgsMaxCount) {
-    nfs3::READ3args args;
-    args.file.data = {0x01};
-    args.offset = 0;
-    args.count = 1048576;
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.count, restored.count);
-}
+    const std::vector<uint8_t> data = {'N', 'F', 'S', '3', '-', 'r', 'e', 'a', 'd', 'w', 'r', 'i', 't', 'e'};
+    auto write = client().write(create->object, 0, nfs3::stable_how::DATA_SYNC, data);
+    ASSERT_TRUE(write.has_value()) << "WRITE should succeed";
+    EXPECT_EQ(write->count, data.size());
 
-TEST_F(Nfs3ReadWriteTest, ReadResOkRoundTrip) {
-    nfs3::READ3res res;
-    res.status = nfs3::nfsstat3::NFS3_OK;
-    res.resok.emplace();
-    res.resok->file_attributes.follow = true;
-    res.resok->file_attributes.attributes.type_ = nfs3::ftype3::NF3REG;
-    res.resok->file_attributes.attributes.size = 8192;
-    res.resok->count = 256;
-    res.resok->eof = false;
-    res.resok->data = {0xDE, 0xAD, 0xBE, 0xEF};
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
-    ASSERT_EQ(res.resok->count, restored.resok->count);
-    ASSERT_EQ(res.resok->eof, restored.resok->eof);
-    ASSERT_EQ(res.resok->data, restored.resok->data);
-}
+    auto read_all = client().read(create->object, 0, static_cast<uint32_t>(data.size()));
+    ASSERT_TRUE(read_all.has_value()) << "READ should succeed";
+    EXPECT_EQ(read_all->data, data);
 
-TEST_F(Nfs3ReadWriteTest, ReadResEofRoundTrip) {
-    nfs3::READ3res res;
-    res.status = nfs3::nfsstat3::NFS3_OK;
-    res.resok.emplace();
-    res.resok->file_attributes.follow = false;
-    res.resok->count = 0;
-    res.resok->eof = true;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_TRUE(restored.resok->eof);
-}
+    auto read_offset = client().read(create->object, 5, 4);
+    ASSERT_TRUE(read_offset.has_value()) << "offset READ should succeed";
+    const std::vector<uint8_t> expected_offset = {'r', 'e', 'a', 'd'};
+    EXPECT_EQ(read_offset->data, expected_offset);
 
-TEST_F(Nfs3ReadWriteTest, WriteArgsRoundTrip) {
-    nfs3::WRITE3args args;
-    args.file.data = {0x01, 0x02, 0x03};
-    args.offset = 2048;
-    args.stable = nfs3::stable_how::UNSTABLE;
-    args.data = {'h', 'e', 'l', 'l', 'o'};
-    auto restored = XdrRoundTrip(args);
-    ASSERT_EQ(args.file.data, restored.file.data);
-    ASSERT_EQ(args.offset, restored.offset);
-    ASSERT_EQ(args.stable, restored.stable);
-    ASSERT_EQ(args.data, restored.data);
-}
-
-TEST_F(Nfs3ReadWriteTest, WriteArgsStableModes) {
-    for (auto mode : {nfs3::stable_how::UNSTABLE,
-                      nfs3::stable_how::DATA_SYNC,
-                      nfs3::stable_how::FILE_SYNC}) {
-        nfs3::WRITE3args args;
-        args.file.data = {0x01};
-        args.offset = 0;
-        args.stable = mode;
-        args.data = {'x'};
-        auto restored = XdrRoundTrip(args);
-        ASSERT_EQ(args.stable, restored.stable);
-    }
-}
-
-TEST_F(Nfs3ReadWriteTest, WriteResOkRoundTrip) {
-    nfs3::WRITE3res res;
-    res.status = nfs3::nfsstat3::NFS3_OK;
-    res.resok.emplace();
-    res.resok->file_attributes.follow = true;
-    res.resok->file_attributes.attributes.size = 8192;
-    res.resok->count = 1024;
-    res.resok->committed = nfs3::stable_how::FILE_SYNC;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
-    ASSERT_EQ(res.resok->count, restored.resok->count);
-    ASSERT_EQ(res.resok->committed, restored.resok->committed);
-}
-
-TEST_F(Nfs3ReadWriteTest, WriteResErrorRoundTrip) {
-    nfs3::WRITE3res res;
-    res.status = nfs3::nfsstat3::NFS3ERR_ROFS;
-    auto restored = XdrRoundTrip(res);
-    ASSERT_EQ(res.status, restored.status);
+    auto remove = client().remove(root(), name);
+    EXPECT_TRUE(remove.has_value()) << "cleanup REMOVE should succeed";
 }
