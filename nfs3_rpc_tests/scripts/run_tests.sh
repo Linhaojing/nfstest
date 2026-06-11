@@ -8,6 +8,7 @@ BUILD_DIR="${PROJECT_ROOT}/build"
 
 SERVER=""
 PORT="2049"
+EXPORT=""
 VERBOSE=0
 TEST_FILTER=""
 LIST_ONLY=0
@@ -19,19 +20,20 @@ NFSv3 RPC Test Suite Runner
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
-    --server <host>       NFS server hostname or IP (required)
+    --server <host>       NFS server hostname or IP
     --port <port>         NFS server port (default: 2049)
+    --export <path>       NFS export path
     --verbose             Enable verbose output
     --filter <pattern>    GTest filter pattern (e.g., "RpcNull*")
     --list-tests          List all available tests without running
     -h, --help            Show this help message
 
 Examples:
-    # Run all tests against server 192.168.1.100
-    $(basename "$0") --server 192.168.1.100
+    # Run all tests against server 192.168.1.100 export /srv/nfs
+    $(basename "$0") --server 192.168.1.100 --export /srv/nfs
 
     # Run only NULL procedure tests with verbose output
-    $(basename "$0") --server localhost --filter "RpcNull*" --verbose
+    $(basename "$0") --server localhost --export /srv/nfs --filter "RpcNull*" --verbose
 
     # List available tests
     $(basename "$0") --list-tests
@@ -39,6 +41,7 @@ Examples:
 Environment Variables:
     NFS_TEST_SERVER   Default NFS server (can be overridden by --server)
     NFS_TEST_PORT     Default NFS port (can be overridden by --port)
+    NFS_TEST_EXPORT   Default NFS export path (can be overridden by --export)
 
 Exit Codes:
     0   All tests passed
@@ -57,6 +60,10 @@ parse_args() {
                 ;;
             --port)
                 PORT="$2"
+                shift 2
+                ;;
+            --export)
+                EXPORT="$2"
                 shift 2
                 ;;
             --verbose)
@@ -89,6 +96,10 @@ parse_args() {
     
     if [[ -z "$PORT" ]]; then
         PORT="${NFS_TEST_PORT:-2049}"
+    fi
+
+    if [[ -z "$EXPORT" ]] && [[ $LIST_ONLY -eq 0 ]]; then
+        EXPORT="${NFS_TEST_EXPORT:-}"
     fi
 }
 
@@ -130,10 +141,14 @@ run_tests() {
     )
     
     if [[ -n "$SERVER" ]]; then
-        ARGS+=("--server=$SERVER")
+        ARGS+=("--server" "$SERVER")
     fi
     
-    ARGS+=("--port=$PORT")
+    ARGS+=("--port" "$PORT")
+
+    if [[ -n "$EXPORT" ]]; then
+        ARGS+=("--export" "$EXPORT")
+    fi
     
     if [[ $VERBOSE -eq 1 ]]; then
         ARGS+=("--verbose")
@@ -150,6 +165,7 @@ run_tests() {
     echo "========================================="
     echo "Server: ${SERVER:-<not set>}"
     echo "Port:   $PORT"
+    echo "Export: ${EXPORT:-<not set>}"
     echo "Binary: $TEST_BINARY"
     if [[ -n "$TEST_FILTER" ]]; then
         echo "Filter: $TEST_FILTER"
@@ -158,9 +174,9 @@ run_tests() {
     echo ""
     
     if [[ $LIST_ONLY -eq 1 ]]; then
-        "${ARGS[@]}" --gtest_list_tests
+        "$TEST_BINARY" "${ARGS[@]}" --gtest_list_tests
     else
-        exec "${ARGS[@]}"
+        exec "$TEST_BINARY" "${ARGS[@]}"
     fi
 }
 

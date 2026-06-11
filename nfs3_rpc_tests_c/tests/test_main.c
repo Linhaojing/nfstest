@@ -429,7 +429,7 @@ static void test_readdir_res_ok_roundtrip(void) {
 
 int main(void) {
     printf("========================================\n");
-    printf("  NFSv3 RPC Tests (C Language)\n");
+    printf("  NFSv3 XDR Unit Tests (C Language)\n");
     printf("========================================\n\n");
 
     printf("--- XDR Codec Tests ---\n");

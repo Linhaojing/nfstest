@@ -1,141 +1,159 @@
 #include "test_framework.h"
+#include "nfs3_server_test.h"
+#include "nfstest/rpc_client.h"
 #include "nfs3_c/nfs3_xdr.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-static void test_lookup_args_roundtrip(void) {
-    LOOKUP3args_t args;
-    lookup3args_init(&args);
-    uint8_t fh[] = {0x01, 0x02, 0x03};
-    nfs_fh3_set(&args.what_dir, fh, 3);
-    lookup3args_set_name(&args, "testfile.txt");
+#define REQUIRE_SERVER_OR_SKIP() do { \
+    if (!nfs3_server_is_configured()) { \
+        if (nfs3_server_require_server()) { \
+            ASSERT_TRUE(0, nfs3_server_skip_message()); \
+        } \
+        TEST_SKIP(nfs3_server_skip_message()); \
+    } \
+} while(0)
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_LOOKUP3args(&buf, &args);
-    xdr_buf_reset_read(&buf);
-
-    LOOKUP3args_t restored;
-    lookup3args_init(&restored);
-    xdr_unpack_LOOKUP3args(&buf, &restored);
-
-    ASSERT_EQ_U32(restored.what_dir.len, 3, "fh length");
-    ASSERT_STREQ(restored.what_name, "testfile.txt", "name");
-
-    lookup3args_destroy(&args);
-    lookup3args_destroy(&restored);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+static void mount_root(nfs_fh3_t* root_fh) {
+    int status = nfs3_mount_root(root_fh);
+    ASSERT_EQ_INT(status, NFSTEST_RPC_OK, "MOUNT root should succeed");
+    ASSERT_TRUE(!nfs_fh3_is_empty(root_fh), "root file handle should not be empty");
 }
 
-static void test_lookup_args_empty_name(void) {
-    LOOKUP3args_t args;
-    lookup3args_init(&args);
-    uint8_t fh[] = {0xFF, 0xFE, 0xFD};
-    nfs_fh3_set(&args.what_dir, fh, 3);
-    lookup3args_set_name(&args, "");
+static int create_file(const nfs_fh3_t* root_fh, const char* filename, nfs_fh3_t* file_fh) {
+    xdr_buf_t args;
+    xdr_buf_init(&args);
+    CREATE3args_t create_args;
+    create3args_init(&create_args);
+    nfs_fh3_set(&create_args.where_dir, root_fh->data, root_fh->len);
+    create3args_set_name(&create_args, filename);
+    create_args.how_mode = UNCHECKED;
+    create_args.how_attributes.mode_set = 1;
+    create_args.how_attributes.mode = 0644;
+    xdr_pack_CREATE3args(&args, &create_args);
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_LOOKUP3args(&buf, &args);
-    xdr_buf_reset_read(&buf);
+    uint8_t* resp = NULL;
+    size_t resp_len = 0;
+    int rpc_status = nfs3_server_call(NFSPROC3_CREATE, &args, &resp, &resp_len);
+    int nfs_status = NFS3ERR_IO;
+    if (rpc_status == NFSTEST_RPC_OK && resp != NULL) {
+        xdr_buf_t body;
+        xdr_buf_init_copy(&body, resp, resp_len);
+        CREATE3res_t create_res;
+        create3res_init(&create_res);
+        xdr_unpack_CREATE3res(&body, &create_res);
+        nfs_status = (int)create_res.status;
+        if (create_res.status == NFS3_OK && !nfs_fh3_is_empty(&create_res.resok.object)) {
+            nfs_fh3_set(file_fh, create_res.resok.object.data, create_res.resok.object.len);
+        }
+        create3res_destroy(&create_res);
+        xdr_buf_destroy(&body);
+    }
 
-    LOOKUP3args_t restored;
-    lookup3args_init(&restored);
-    xdr_unpack_LOOKUP3args(&buf, &restored);
-
-    ASSERT_STREQ(restored.what_name, "", "empty name");
-
-    lookup3args_destroy(&args);
-    lookup3args_destroy(&restored);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+    free(resp);
+    create3args_destroy(&create_args);
+    xdr_buf_destroy(&args);
+    return rpc_status == NFSTEST_RPC_OK ? nfs_status : rpc_status;
 }
 
-static void test_lookup_args_long_path(void) {
-    LOOKUP3args_t args;
-    lookup3args_init(&args);
-    uint8_t fh[] = {0x01};
-    nfs_fh3_set(&args.what_dir, fh, 1);
-    lookup3args_set_name(&args, "this/is/a/very/deep/nested/path/file.txt");
+static int lookup_name(const nfs_fh3_t* root_fh, const char* filename, LOOKUP3res_t* res) {
+    xdr_buf_t args;
+    xdr_buf_init(&args);
+    LOOKUP3args_t lookup_args;
+    lookup3args_init(&lookup_args);
+    nfs_fh3_set(&lookup_args.what_dir, root_fh->data, root_fh->len);
+    lookup3args_set_name(&lookup_args, filename);
+    xdr_pack_LOOKUP3args(&args, &lookup_args);
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_LOOKUP3args(&buf, &args);
-    xdr_buf_reset_read(&buf);
+    uint8_t* resp = NULL;
+    size_t resp_len = 0;
+    int status = nfs3_server_call(NFSPROC3_LOOKUP, &args, &resp, &resp_len);
+    if (status == NFSTEST_RPC_OK && resp != NULL) {
+        xdr_buf_t body;
+        xdr_buf_init_copy(&body, resp, resp_len);
+        xdr_unpack_LOOKUP3res(&body, res);
+        xdr_buf_destroy(&body);
+    }
 
-    LOOKUP3args_t restored;
-    lookup3args_init(&restored);
-    xdr_unpack_LOOKUP3args(&buf, &restored);
-
-    ASSERT_STREQ(restored.what_name, "this/is/a/very/deep/nested/path/file.txt", "long name");
-
-    lookup3args_destroy(&args);
-    lookup3args_destroy(&restored);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+    free(resp);
+    lookup3args_destroy(&lookup_args);
+    xdr_buf_destroy(&args);
+    return status;
 }
 
-static void test_lookup_res_ok_roundtrip(void) {
-    LOOKUP3res_t res;
-    lookup3res_init(&res);
-    res.status = NFS3_OK;
-    res.has_resok = 1;
-    uint8_t fh[] = {0xAA, 0xBB, 0xCC};
-    nfs_fh3_set(&res.resok.object, fh, 3);
-    res.resok.obj_attributes.follow = 1;
-    res.resok.obj_attributes.attributes.type = NF3REG;
-    res.resok.obj_attributes.attributes.size = 8192;
-    res.resok.dir_attributes.follow = 1;
-    res.resok.dir_attributes.attributes.type = NF3DIR;
+static void test_lookup_existing_file(void) {
+    REQUIRE_SERVER_OR_SKIP();
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_LOOKUP3res(&buf, &res);
-    xdr_buf_reset_read(&buf);
+    nfs_fh3_t root_fh;
+    nfs_fh3_t file_fh;
+    nfs_fh3_init(&root_fh);
+    nfs_fh3_init(&file_fh);
+    char filename[128];
+    nfs3_unique_name("c_lookup", filename, sizeof(filename));
+    int created = 0;
+    int failed = 0;
 
-    LOOKUP3res_t restored;
-    lookup3res_init(&restored);
-    xdr_unpack_LOOKUP3res(&buf, &restored);
+    mount_root(&root_fh);
+    int status = create_file(&root_fh, filename, &file_fh);
+    if (status != NFS3_OK) {
+        printf("\n  FAIL  %s: CREATE should return OK (status %d, line %d)\n", current_test_name, status, __LINE__);
+        tests_failed++;
+        failed = 1;
+        goto cleanup;
+    }
+    created = 1;
 
-    ASSERT_EQ_U32((uint32_t)restored.status, (uint32_t)NFS3_OK, "status");
-    ASSERT_EQ_INT(restored.has_resok, 1, "has_resok");
-    ASSERT_EQ_U32(restored.resok.object.len, 3, "object fh len");
+    LOOKUP3res_t lookup_res;
+    lookup3res_init(&lookup_res);
+    status = lookup_name(&root_fh, filename, &lookup_res);
+    if (status != NFSTEST_RPC_OK || lookup_res.status != NFS3_OK || nfs_fh3_is_empty(&lookup_res.resok.object)) {
+        printf("\n  FAIL  %s: LOOKUP existing file should return object handle (rpc/status %d/%u, line %d)\n",
+               current_test_name, status, (uint32_t)lookup_res.status, __LINE__);
+        tests_failed++;
+        failed = 1;
+    }
+    lookup3res_destroy(&lookup_res);
 
-    lookup3res_destroy(&res);
-    lookup3res_destroy(&restored);
-    xdr_buf_destroy(&buf);
-    TEST_PASS();
+cleanup:
+    if (created) {
+        nfs3_remove_if_test_file(&root_fh, filename);
+    }
+    nfs_fh3_destroy(&file_fh);
+    nfs_fh3_destroy(&root_fh);
+    if (!failed) {
+        TEST_PASS();
+    }
 }
 
-static void test_lookup_res_noent(void) {
-    LOOKUP3res_t res;
-    lookup3res_init(&res);
-    res.status = NFS3ERR_NOENT;
+static void test_lookup_nonexistent_file(void) {
+    REQUIRE_SERVER_OR_SKIP();
 
-    xdr_buf_t buf;
-    xdr_buf_init(&buf);
-    xdr_pack_LOOKUP3res(&buf, &res);
-    xdr_buf_reset_read(&buf);
+    nfs_fh3_t root_fh;
+    nfs_fh3_init(&root_fh);
+    char filename[128];
+    nfs3_unique_name("c_lookup_missing", filename, sizeof(filename));
 
-    LOOKUP3res_t restored;
-    lookup3res_init(&restored);
-    xdr_unpack_LOOKUP3res(&buf, &restored);
+    mount_root(&root_fh);
+    nfs3_remove_if_test_file(&root_fh, filename);
 
-    ASSERT_EQ_U32((uint32_t)restored.status, (uint32_t)NFS3ERR_NOENT, "status");
-    ASSERT_EQ_INT(restored.has_resok, 0, "no resok");
+    LOOKUP3res_t lookup_res;
+    lookup3res_init(&lookup_res);
+    int status = lookup_name(&root_fh, filename, &lookup_res);
 
-    lookup3res_destroy(&res);
-    lookup3res_destroy(&restored);
-    xdr_buf_destroy(&buf);
+    ASSERT_EQ_INT(status, NFSTEST_RPC_OK, "LOOKUP RPC should succeed");
+    ASSERT_EQ_U32((uint32_t)lookup_res.status, (uint32_t)NFS3ERR_NOENT, "LOOKUP nonexistent status");
+
+    lookup3res_destroy(&lookup_res);
+    nfs_fh3_destroy(&root_fh);
     TEST_PASS();
 }
 
 int main(void) {
-    printf("=== NFSv3 LOOKUP Tests (C) ===\n\n");
-    RUN_TEST(test_lookup_args_roundtrip);
-    RUN_TEST(test_lookup_args_empty_name);
-    RUN_TEST(test_lookup_args_long_path);
-    RUN_TEST(test_lookup_res_ok_roundtrip);
-    RUN_TEST(test_lookup_res_noent);
+    printf("=== NFSv3 LOOKUP Server Tests (C) ===\n\n");
+    RUN_TEST(test_lookup_existing_file);
+    RUN_TEST(test_lookup_nonexistent_file);
     PRINT_SUMMARY();
     return tests_failed;
 }
