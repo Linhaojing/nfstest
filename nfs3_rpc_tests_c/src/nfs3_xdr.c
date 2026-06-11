@@ -506,6 +506,107 @@ void xdr_unpack_REMOVE3res(xdr_buf_t* buf, REMOVE3res_t* res) {
     }
 }
 
+/* --- RMDIR --- */
+
+void xdr_pack_RMDIR3args(xdr_buf_t* buf, const RMDIR3args_t* args) {
+    xdr_pack_nfs_fh3(buf, &args->object_dir);
+    xdr_pack_cstring(buf, args->object_name);
+}
+
+void xdr_unpack_RMDIR3args(xdr_buf_t* buf, RMDIR3args_t* args) {
+    xdr_unpack_nfs_fh3(buf, &args->object_dir);
+    free(args->object_name);
+    xdr_unpack_cstring(buf, &args->object_name);
+}
+
+void xdr_pack_RMDIR3res(xdr_buf_t* buf, const RMDIR3res_t* res) {
+    xdr_pack_uint32(buf, (uint32_t)res->status);
+    if (res->status == NFS3_OK && res->has_resok) {
+        xdr_pack_wcc_data(buf, &res->resok.dir_wcc);
+    }
+}
+
+void xdr_unpack_RMDIR3res(xdr_buf_t* buf, RMDIR3res_t* res) {
+    uint32_t s;
+    xdr_unpack_uint32(buf, &s);
+    res->status = (nfsstat3_t)s;
+    res->has_resok = (res->status == NFS3_OK);
+    if (res->has_resok) {
+        xdr_unpack_wcc_data(buf, &res->resok.dir_wcc);
+    }
+}
+
+/* --- RENAME --- */
+
+void xdr_pack_RENAME3args(xdr_buf_t* buf, const RENAME3args_t* args) {
+    xdr_pack_nfs_fh3(buf, &args->from_dir);
+    xdr_pack_cstring(buf, args->from_name);
+    xdr_pack_nfs_fh3(buf, &args->to_dir);
+    xdr_pack_cstring(buf, args->to_name);
+}
+
+void xdr_unpack_RENAME3args(xdr_buf_t* buf, RENAME3args_t* args) {
+    xdr_unpack_nfs_fh3(buf, &args->from_dir);
+    free(args->from_name);
+    xdr_unpack_cstring(buf, &args->from_name);
+    xdr_unpack_nfs_fh3(buf, &args->to_dir);
+    free(args->to_name);
+    xdr_unpack_cstring(buf, &args->to_name);
+}
+
+void xdr_pack_RENAME3res(xdr_buf_t* buf, const RENAME3res_t* res) {
+    xdr_pack_uint32(buf, (uint32_t)res->status);
+    if (res->status == NFS3_OK && res->has_resok) {
+        xdr_pack_wcc_data(buf, &res->resok.fromdir_wcc);
+        xdr_pack_wcc_data(buf, &res->resok.todir_wcc);
+    }
+}
+
+void xdr_unpack_RENAME3res(xdr_buf_t* buf, RENAME3res_t* res) {
+    uint32_t s;
+    xdr_unpack_uint32(buf, &s);
+    res->status = (nfsstat3_t)s;
+    res->has_resok = (res->status == NFS3_OK);
+    if (res->has_resok) {
+        xdr_unpack_wcc_data(buf, &res->resok.fromdir_wcc);
+        xdr_unpack_wcc_data(buf, &res->resok.todir_wcc);
+    }
+}
+
+/* --- LINK --- */
+
+void xdr_pack_LINK3args(xdr_buf_t* buf, const LINK3args_t* args) {
+    xdr_pack_nfs_fh3(buf, &args->file);
+    xdr_pack_nfs_fh3(buf, &args->link_dir);
+    xdr_pack_cstring(buf, args->link_name);
+}
+
+void xdr_unpack_LINK3args(xdr_buf_t* buf, LINK3args_t* args) {
+    xdr_unpack_nfs_fh3(buf, &args->file);
+    xdr_unpack_nfs_fh3(buf, &args->link_dir);
+    free(args->link_name);
+    xdr_unpack_cstring(buf, &args->link_name);
+}
+
+void xdr_pack_LINK3res(xdr_buf_t* buf, const LINK3res_t* res) {
+    xdr_pack_uint32(buf, (uint32_t)res->status);
+    if (res->status == NFS3_OK && res->has_resok) {
+        xdr_pack_post_op_attr(buf, &res->resok.file_attributes);
+        xdr_pack_wcc_data(buf, &res->resok.linkdir_wcc);
+    }
+}
+
+void xdr_unpack_LINK3res(xdr_buf_t* buf, LINK3res_t* res) {
+    uint32_t s;
+    xdr_unpack_uint32(buf, &s);
+    res->status = (nfsstat3_t)s;
+    res->has_resok = (res->status == NFS3_OK);
+    if (res->has_resok) {
+        xdr_unpack_post_op_attr(buf, &res->resok.file_attributes);
+        xdr_unpack_wcc_data(buf, &res->resok.linkdir_wcc);
+    }
+}
+
 /* --- ACCESS --- */
 
 void xdr_pack_ACCESS3args(xdr_buf_t* buf, const ACCESS3args_t* args) {
@@ -611,6 +712,101 @@ void xdr_unpack_MKDIR3res(xdr_buf_t* buf, MKDIR3res_t* res) {
     }
 }
 
+/* --- SYMLINK --- */
+
+void xdr_pack_SYMLINK3args(xdr_buf_t* buf, const SYMLINK3args_t* args) {
+    xdr_pack_nfs_fh3(buf, &args->where_dir);
+    xdr_pack_cstring(buf, args->where_name);
+    xdr_pack_sattr3(buf, &args->symlink_attributes);
+    xdr_pack_cstring(buf, args->symlink_data);
+}
+
+void xdr_unpack_SYMLINK3args(xdr_buf_t* buf, SYMLINK3args_t* args) {
+    xdr_unpack_nfs_fh3(buf, &args->where_dir);
+    free(args->where_name);
+    xdr_unpack_cstring(buf, &args->where_name);
+    xdr_unpack_sattr3(buf, &args->symlink_attributes);
+    free(args->symlink_data);
+    xdr_unpack_cstring(buf, &args->symlink_data);
+}
+
+void xdr_pack_SYMLINK3res(xdr_buf_t* buf, const SYMLINK3res_t* res) {
+    xdr_pack_uint32(buf, (uint32_t)res->status);
+    if (res->status == NFS3_OK && res->has_resok) {
+        xdr_pack_bool(buf, !nfs_fh3_is_empty(&res->resok.object));
+        if (!nfs_fh3_is_empty(&res->resok.object)) {
+            xdr_pack_nfs_fh3(buf, &res->resok.object);
+        }
+        xdr_pack_post_op_attr(buf, &res->resok.obj_attributes);
+        xdr_pack_wcc_data(buf, &res->resok.dir_wcc);
+    }
+}
+
+void xdr_unpack_SYMLINK3res(xdr_buf_t* buf, SYMLINK3res_t* res) {
+    symlink3res_destroy(res);
+    uint32_t s;
+    xdr_unpack_uint32(buf, &s);
+    res->status = (nfsstat3_t)s;
+    res->has_resok = (res->status == NFS3_OK);
+    if (res->has_resok) {
+        int has_object;
+        xdr_unpack_bool(buf, &has_object);
+        if (has_object) {
+            xdr_unpack_nfs_fh3(buf, &res->resok.object);
+        }
+        xdr_unpack_post_op_attr(buf, &res->resok.obj_attributes);
+        xdr_unpack_wcc_data(buf, &res->resok.dir_wcc);
+    }
+}
+
+/* --- MKNOD --- */
+
+void xdr_pack_MKNOD3args(xdr_buf_t* buf, const MKNOD3args_t* args) {
+    xdr_pack_nfs_fh3(buf, &args->where_dir);
+    xdr_pack_cstring(buf, args->where_name);
+    xdr_pack_uint32(buf, (uint32_t)args->what_type);
+    xdr_pack_sattr3(buf, &args->what_attributes);
+}
+
+void xdr_unpack_MKNOD3args(xdr_buf_t* buf, MKNOD3args_t* args) {
+    xdr_unpack_nfs_fh3(buf, &args->where_dir);
+    free(args->where_name);
+    xdr_unpack_cstring(buf, &args->where_name);
+    uint32_t type_val;
+    xdr_unpack_uint32(buf, &type_val);
+    args->what_type = (ftype4_t)type_val;
+    xdr_unpack_sattr3(buf, &args->what_attributes);
+}
+
+void xdr_pack_MKNOD3res(xdr_buf_t* buf, const MKNOD3res_t* res) {
+    xdr_pack_uint32(buf, (uint32_t)res->status);
+    if (res->status == NFS3_OK && res->has_resok) {
+        xdr_pack_bool(buf, !nfs_fh3_is_empty(&res->resok.object));
+        if (!nfs_fh3_is_empty(&res->resok.object)) {
+            xdr_pack_nfs_fh3(buf, &res->resok.object);
+        }
+        xdr_pack_post_op_attr(buf, &res->resok.obj_attributes);
+        xdr_pack_wcc_data(buf, &res->resok.dir_wcc);
+    }
+}
+
+void xdr_unpack_MKNOD3res(xdr_buf_t* buf, MKNOD3res_t* res) {
+    mknod3res_destroy(res);
+    uint32_t s;
+    xdr_unpack_uint32(buf, &s);
+    res->status = (nfsstat3_t)s;
+    res->has_resok = (res->status == NFS3_OK);
+    if (res->has_resok) {
+        int has_object;
+        xdr_unpack_bool(buf, &has_object);
+        if (has_object) {
+            xdr_unpack_nfs_fh3(buf, &res->resok.object);
+        }
+        xdr_unpack_post_op_attr(buf, &res->resok.obj_attributes);
+        xdr_unpack_wcc_data(buf, &res->resok.dir_wcc);
+    }
+}
+
 /* --- READDIR --- */
 
 void xdr_pack_READDIR3args(xdr_buf_t* buf, const READDIR3args_t* args) {
@@ -664,6 +860,99 @@ void xdr_unpack_READDIR3res(xdr_buf_t* buf, READDIR3res_t* res) {
         xdr_unpack_post_op_attr(buf, &res->resok.dir_attributes);
         xdr_unpack_uint64(buf, &res->resok.cookieverf);
         xdr_unpack_dirlist3(buf, &res->resok.reply);
+    }
+}
+
+/* --- READDIRPLUS --- */
+
+void xdr_pack_READDIRPLUS3args(xdr_buf_t* buf, const READDIRPLUS3args_t* args) {
+    xdr_pack_nfs_fh3(buf, &args->dir);
+    xdr_pack_uint64(buf, args->cookie);
+    xdr_pack_uint64(buf, args->cookieverf);
+    xdr_pack_uint32(buf, args->dircount);
+    xdr_pack_uint32(buf, args->maxcount);
+}
+
+void xdr_unpack_READDIRPLUS3args(xdr_buf_t* buf, READDIRPLUS3args_t* args) {
+    xdr_unpack_nfs_fh3(buf, &args->dir);
+    xdr_unpack_uint64(buf, &args->cookie);
+    xdr_unpack_uint64(buf, &args->cookieverf);
+    xdr_unpack_uint32(buf, &args->dircount);
+    xdr_unpack_uint32(buf, &args->maxcount);
+}
+
+static void xdr_pack_entryplus3(xdr_buf_t* buf, const entryplus3_t* e) {
+    xdr_pack_uint64(buf, e->fileid);
+    xdr_pack_cstring(buf, e->name);
+    xdr_pack_uint64(buf, e->cookie);
+    xdr_pack_post_op_attr(buf, &e->name_attributes);
+    xdr_pack_bool(buf, !nfs_fh3_is_empty(&e->name_handle));
+    if (!nfs_fh3_is_empty(&e->name_handle)) {
+        xdr_pack_nfs_fh3(buf, &e->name_handle);
+    }
+    xdr_pack_bool(buf, e->nextentry != NULL);
+    if (e->nextentry) {
+        xdr_pack_entryplus3(buf, e->nextentry);
+    }
+}
+
+static void xdr_unpack_entryplus3(xdr_buf_t* buf, entryplus3_t* e) {
+    xdr_unpack_uint64(buf, &e->fileid);
+    xdr_unpack_cstring(buf, &e->name);
+    xdr_unpack_uint64(buf, &e->cookie);
+    xdr_unpack_post_op_attr(buf, &e->name_attributes);
+    int has_handle;
+    xdr_unpack_bool(buf, &has_handle);
+    if (has_handle) {
+        xdr_unpack_nfs_fh3(buf, &e->name_handle);
+    }
+    int has_next;
+    xdr_unpack_bool(buf, &has_next);
+    if (has_next) {
+        e->nextentry = (entryplus3_t*)calloc(1, sizeof(entryplus3_t));
+        entryplus3_init(e->nextentry);
+        xdr_unpack_entryplus3(buf, e->nextentry);
+    }
+}
+
+static void xdr_pack_dirlistplus3(xdr_buf_t* buf, const dirlistplus3_t* dl) {
+    xdr_pack_bool(buf, dl->entries != NULL);
+    if (dl->entries) {
+        xdr_pack_entryplus3(buf, dl->entries);
+    }
+    xdr_pack_bool(buf, dl->eof);
+}
+
+static void xdr_unpack_dirlistplus3(xdr_buf_t* buf, dirlistplus3_t* dl) {
+    int has_entries;
+    xdr_unpack_bool(buf, &has_entries);
+    if (has_entries) {
+        dl->entries = (entryplus3_t*)calloc(1, sizeof(entryplus3_t));
+        entryplus3_init(dl->entries);
+        xdr_unpack_entryplus3(buf, dl->entries);
+    }
+    xdr_unpack_bool(buf, &dl->eof);
+}
+
+void xdr_pack_READDIRPLUS3res(xdr_buf_t* buf, const READDIRPLUS3res_t* res) {
+    xdr_pack_uint32(buf, (uint32_t)res->status);
+    if (res->status == NFS3_OK && res->has_resok) {
+        xdr_pack_post_op_attr(buf, &res->resok.dir_attributes);
+        xdr_pack_uint64(buf, res->resok.cookieverf);
+        xdr_pack_dirlistplus3(buf, &res->resok.reply);
+    }
+}
+
+void xdr_unpack_READDIRPLUS3res(xdr_buf_t* buf, READDIRPLUS3res_t* res) {
+    readdirplus3res_destroy(res);
+    uint32_t s;
+    xdr_unpack_uint32(buf, &s);
+    res->status = (nfsstat3_t)s;
+    res->has_resok = (res->status == NFS3_OK);
+    if (res->has_resok) {
+        xdr_unpack_post_op_attr(buf, &res->resok.dir_attributes);
+        xdr_unpack_uint64(buf, &res->resok.cookieverf);
+        xdr_unpack_dirlistplus3(buf, &res->resok.reply);
     }
 }
 
@@ -754,6 +1043,56 @@ void xdr_unpack_FSINFO3res(xdr_buf_t* buf, FSINFO3res_t* res) {
         xdr_unpack_uint32(buf, &res->resok.time_delta_seconds);
         xdr_unpack_uint32(buf, &res->resok.time_delta_nseconds);
         xdr_unpack_uint32(buf, &res->resok.properties);
+    }
+}
+
+/* --- PATHCONF --- */
+
+void xdr_pack_PATHCONF3args(xdr_buf_t* buf, const PATHCONF3args_t* args) {
+    xdr_pack_nfs_fh3(buf, &args->object);
+}
+
+void xdr_unpack_PATHCONF3args(xdr_buf_t* buf, PATHCONF3args_t* args) {
+    xdr_unpack_nfs_fh3(buf, &args->object);
+}
+
+static void xdr_pack_pathconf3_resok_info(xdr_buf_t* buf, const pathconf3_resok_info_t* info) {
+    xdr_pack_uint32(buf, (uint32_t)info->linkmax);
+    xdr_pack_uint32(buf, (uint32_t)info->name_max);
+    xdr_pack_bool(buf, info->no_trunc);
+    xdr_pack_bool(buf, info->chown_restricted);
+    xdr_pack_bool(buf, info->case_insensitive);
+    xdr_pack_bool(buf, info->case_preserving);
+}
+
+static void xdr_unpack_pathconf3_resok_info(xdr_buf_t* buf, pathconf3_resok_info_t* info) {
+    uint32_t val;
+    xdr_unpack_uint32(buf, &val);
+    info->linkmax = (int32_t)val;
+    xdr_unpack_uint32(buf, &val);
+    info->name_max = (int32_t)val;
+    xdr_unpack_bool(buf, &info->no_trunc);
+    xdr_unpack_bool(buf, &info->chown_restricted);
+    xdr_unpack_bool(buf, &info->case_insensitive);
+    xdr_unpack_bool(buf, &info->case_preserving);
+}
+
+void xdr_pack_PATHCONF3res(xdr_buf_t* buf, const PATHCONF3res_t* res) {
+    xdr_pack_uint32(buf, (uint32_t)res->status);
+    if (res->status == NFS3_OK && res->has_resok) {
+        xdr_pack_post_op_attr(buf, &res->resok.obj_attributes);
+        xdr_pack_pathconf3_resok_info(buf, &res->resok.info);
+    }
+}
+
+void xdr_unpack_PATHCONF3res(xdr_buf_t* buf, PATHCONF3res_t* res) {
+    uint32_t s;
+    xdr_unpack_uint32(buf, &s);
+    res->status = (nfsstat3_t)s;
+    res->has_resok = (res->status == NFS3_OK);
+    if (res->has_resok) {
+        xdr_unpack_post_op_attr(buf, &res->resok.obj_attributes);
+        xdr_unpack_pathconf3_resok_info(buf, &res->resok.info);
     }
 }
 

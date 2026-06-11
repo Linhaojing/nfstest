@@ -84,6 +84,24 @@ void xdr_unpack_REMOVE3args(xdr_buf_t* buf, REMOVE3args_t* args);
 void xdr_pack_REMOVE3res(xdr_buf_t* buf, const REMOVE3res_t* res);
 void xdr_unpack_REMOVE3res(xdr_buf_t* buf, REMOVE3res_t* res);
 
+/* --- RMDIR --- */
+void xdr_pack_RMDIR3args(xdr_buf_t* buf, const RMDIR3args_t* args);
+void xdr_unpack_RMDIR3args(xdr_buf_t* buf, RMDIR3args_t* args);
+void xdr_pack_RMDIR3res(xdr_buf_t* buf, const RMDIR3res_t* res);
+void xdr_unpack_RMDIR3res(xdr_buf_t* buf, RMDIR3res_t* res);
+
+/* --- RENAME --- */
+void xdr_pack_RENAME3args(xdr_buf_t* buf, const RENAME3args_t* args);
+void xdr_unpack_RENAME3args(xdr_buf_t* buf, RENAME3args_t* args);
+void xdr_pack_RENAME3res(xdr_buf_t* buf, const RENAME3res_t* res);
+void xdr_unpack_RENAME3res(xdr_buf_t* buf, RENAME3res_t* res);
+
+/* --- LINK --- */
+void xdr_pack_LINK3args(xdr_buf_t* buf, const LINK3args_t* args);
+void xdr_unpack_LINK3args(xdr_buf_t* buf, LINK3args_t* args);
+void xdr_pack_LINK3res(xdr_buf_t* buf, const LINK3res_t* res);
+void xdr_unpack_LINK3res(xdr_buf_t* buf, LINK3res_t* res);
+
 /* --- ACCESS --- */
 void xdr_pack_ACCESS3args(xdr_buf_t* buf, const ACCESS3args_t* args);
 void xdr_unpack_ACCESS3args(xdr_buf_t* buf, ACCESS3args_t* args);
@@ -102,11 +120,29 @@ void xdr_unpack_MKDIR3args(xdr_buf_t* buf, MKDIR3args_t* args);
 void xdr_pack_MKDIR3res(xdr_buf_t* buf, const MKDIR3res_t* res);
 void xdr_unpack_MKDIR3res(xdr_buf_t* buf, MKDIR3res_t* res);
 
+/* --- SYMLINK --- */
+void xdr_pack_SYMLINK3args(xdr_buf_t* buf, const SYMLINK3args_t* args);
+void xdr_unpack_SYMLINK3args(xdr_buf_t* buf, SYMLINK3args_t* args);
+void xdr_pack_SYMLINK3res(xdr_buf_t* buf, const SYMLINK3res_t* res);
+void xdr_unpack_SYMLINK3res(xdr_buf_t* buf, SYMLINK3res_t* res);
+
+/* --- MKNOD --- */
+void xdr_pack_MKNOD3args(xdr_buf_t* buf, const MKNOD3args_t* args);
+void xdr_unpack_MKNOD3args(xdr_buf_t* buf, MKNOD3args_t* args);
+void xdr_pack_MKNOD3res(xdr_buf_t* buf, const MKNOD3res_t* res);
+void xdr_unpack_MKNOD3res(xdr_buf_t* buf, MKNOD3res_t* res);
+
 /* --- READDIR --- */
 void xdr_pack_READDIR3args(xdr_buf_t* buf, const READDIR3args_t* args);
 void xdr_unpack_READDIR3args(xdr_buf_t* buf, READDIR3args_t* args);
 void xdr_pack_READDIR3res(xdr_buf_t* buf, const READDIR3res_t* res);
 void xdr_unpack_READDIR3res(xdr_buf_t* buf, READDIR3res_t* res);
+
+/* --- READDIRPLUS --- */
+void xdr_pack_READDIRPLUS3args(xdr_buf_t* buf, const READDIRPLUS3args_t* args);
+void xdr_unpack_READDIRPLUS3args(xdr_buf_t* buf, READDIRPLUS3args_t* args);
+void xdr_pack_READDIRPLUS3res(xdr_buf_t* buf, const READDIRPLUS3res_t* res);
+void xdr_unpack_READDIRPLUS3res(xdr_buf_t* buf, READDIRPLUS3res_t* res);
 
 /* --- FSSTAT --- */
 void xdr_pack_FSSTAT3args(xdr_buf_t* buf, const FSSTAT3args_t* args);
@@ -119,6 +155,12 @@ void xdr_pack_FSINFO3args(xdr_buf_t* buf, const FSINFO3args_t* args);
 void xdr_unpack_FSINFO3args(xdr_buf_t* buf, FSINFO3args_t* args);
 void xdr_pack_FSINFO3res(xdr_buf_t* buf, const FSINFO3res_t* res);
 void xdr_unpack_FSINFO3res(xdr_buf_t* buf, FSINFO3res_t* res);
+
+/* --- PATHCONF --- */
+void xdr_pack_PATHCONF3args(xdr_buf_t* buf, const PATHCONF3args_t* args);
+void xdr_unpack_PATHCONF3args(xdr_buf_t* buf, PATHCONF3args_t* args);
+void xdr_pack_PATHCONF3res(xdr_buf_t* buf, const PATHCONF3res_t* res);
+void xdr_unpack_PATHCONF3res(xdr_buf_t* buf, PATHCONF3res_t* res);
 
 /* --- COMMIT --- */
 void xdr_pack_COMMIT3args(xdr_buf_t* buf, const COMMIT3args_t* args);
