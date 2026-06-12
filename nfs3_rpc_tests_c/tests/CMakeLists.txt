@@ -54,6 +54,10 @@ add_executable(test_rpc_real_c test_rpc_real.c nfs3_server_test.c)
 target_link_libraries(test_rpc_real_c PRIVATE nfs3_test_core_c)
 target_include_directories(test_rpc_real_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_executable(test_rpc_robustness_c test_rpc_robustness.c nfs3_server_test.c)
+target_link_libraries(test_rpc_robustness_c PRIVATE nfs3_test_core_c)
+target_include_directories(test_rpc_robustness_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
 set(NFS3_SERVER_TEST_LABELS "integration;server;nfs3")
 
 add_test(NAME test_suite_c COMMAND test_suite_c)
@@ -70,6 +74,7 @@ add_test(NAME test_nfs3_namespace_c COMMAND test_nfs3_namespace_c)
 add_test(NAME test_nfs3_io_c COMMAND test_nfs3_io_c)
 add_test(NAME test_nfs3_symlink_special_c COMMAND test_nfs3_symlink_special_c)
 add_test(NAME test_rpc_real_c COMMAND test_rpc_real_c)
+add_test(NAME test_rpc_robustness_c COMMAND test_rpc_robustness_c)
 
 set_tests_properties(
     test_suite_c
@@ -90,5 +95,6 @@ set_tests_properties(
     test_nfs3_io_c
     test_nfs3_symlink_special_c
     test_rpc_real_c
+    test_rpc_robustness_c
     PROPERTIES LABELS "${NFS3_SERVER_TEST_LABELS}"
 )

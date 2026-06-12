@@ -28,6 +28,10 @@ public:
         const std::vector<uint8_t>& xdr_args,
         int timeout_ms);
 
+    std::pair<RpcStatus, std::vector<uint8_t>> raw_call(
+        const std::vector<uint8_t>& raw_msg,
+        int timeout_ms);
+
 private:
     TcpTransport transport_;
     uint32_t xid_ = 1;
