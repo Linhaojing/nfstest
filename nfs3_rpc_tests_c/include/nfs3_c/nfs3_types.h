@@ -263,6 +263,72 @@ typedef struct {
     REMOVE3resok_t resok;
 } REMOVE3res_t;
 
+/* RMDIR */
+typedef struct {
+    nfs_fh3_t object_dir;
+    char*     object_name;
+} RMDIR3args_t;
+
+void rmdir3args_init(RMDIR3args_t* args);
+void rmdir3args_destroy(RMDIR3args_t* args);
+void rmdir3args_set_name(RMDIR3args_t* args, const char* name);
+
+typedef struct {
+    wcc_data_t dir_wcc;
+} RMDIR3resok_t;
+
+typedef struct {
+    nfsstat3_t    status;
+    int           has_resok;
+    RMDIR3resok_t resok;
+} RMDIR3res_t;
+
+/* RENAME */
+typedef struct {
+    nfs_fh3_t from_dir;
+    char*     from_name;
+    nfs_fh3_t to_dir;
+    char*     to_name;
+} RENAME3args_t;
+
+void rename3args_init(RENAME3args_t* args);
+void rename3args_destroy(RENAME3args_t* args);
+void rename3args_set_from_name(RENAME3args_t* args, const char* name);
+void rename3args_set_to_name(RENAME3args_t* args, const char* name);
+
+typedef struct {
+    wcc_data_t fromdir_wcc;
+    wcc_data_t todir_wcc;
+} RENAME3resok_t;
+
+typedef struct {
+    nfsstat3_t     status;
+    int            has_resok;
+    RENAME3resok_t resok;
+} RENAME3res_t;
+
+/* LINK */
+typedef struct {
+    nfs_fh3_t file;
+    nfs_fh3_t link_dir;
+    char*     link_name;
+} LINK3args_t;
+
+void link3args_init(LINK3args_t* args);
+void link3args_destroy(LINK3args_t* args);
+void link3args_set_name(LINK3args_t* args, const char* name);
+
+typedef struct {
+    post_op_attr_t file_attributes;
+    wcc_data_t     linkdir_wcc;
+} LINK3resok_t;
+
+typedef struct {
+    nfsstat3_t  status;
+    int         has_resok;
+    LINK3resok_t resok;
+} LINK3res_t;
+
 /* ACCESS */
 typedef struct {
     nfs_fh3_t object;
@@ -331,6 +397,67 @@ typedef struct {
 void mkdir3res_init(MKDIR3res_t* res);
 void mkdir3res_destroy(MKDIR3res_t* res);
 
+/* SYMLINK */
+typedef struct {
+    nfs_fh3_t where_dir;
+    char*     where_name;
+    sattr3_t  symlink_attributes;
+    char*     symlink_data;
+} SYMLINK3args_t;
+
+void symlink3args_init(SYMLINK3args_t* args);
+void symlink3args_destroy(SYMLINK3args_t* args);
+void symlink3args_set_name(SYMLINK3args_t* args, const char* name);
+void symlink3args_set_data(SYMLINK3args_t* args, const char* data);
+
+typedef struct {
+    post_op_attr_t obj_attributes;
+    wcc_data_t     dir_wcc;
+    nfs_fh3_t      object;
+} SYMLINK3resok_t;
+
+void symlink3resok_init(SYMLINK3resok_t* res);
+void symlink3resok_destroy(SYMLINK3resok_t* res);
+
+typedef struct {
+    nfsstat3_t       status;
+    int              has_resok;
+    SYMLINK3resok_t  resok;
+} SYMLINK3res_t;
+
+void symlink3res_init(SYMLINK3res_t* res);
+void symlink3res_destroy(SYMLINK3res_t* res);
+
+/* MKNOD */
+typedef struct {
+    nfs_fh3_t where_dir;
+    char*     where_name;
+    ftype4_t  what_type;
+    sattr3_t  what_attributes;
+} MKNOD3args_t;
+
+void mknod3args_init(MKNOD3args_t* args);
+void mknod3args_destroy(MKNOD3args_t* args);
+void mknod3args_set_name(MKNOD3args_t* args, const char* name);
+
+typedef struct {
+    post_op_attr_t obj_attributes;
+    wcc_data_t     dir_wcc;
+    nfs_fh3_t      object;
+} MKNOD3resok_t;
+
+void mknod3resok_init(MKNOD3resok_t* res);
+void mknod3resok_destroy(MKNOD3resok_t* res);
+
+typedef struct {
+    nfsstat3_t     status;
+    int            has_resok;
+    MKNOD3resok_t  resok;
+} MKNOD3res_t;
+
+void mknod3res_init(MKNOD3res_t* res);
+void mknod3res_destroy(MKNOD3res_t* res);
+
 /* READDIR */
 typedef struct {
     nfs_fh3_t dir;
@@ -375,6 +502,54 @@ typedef struct {
 
 void readdir3res_init(READDIR3res_t* res);
 void readdir3res_destroy(READDIR3res_t* res);
+
+/* READDIRPLUS */
+typedef struct entryplus3_s {
+    uint64_t               fileid;
+    char*                  name;
+    uint64_t               cookie;
+    nfs_fh3_t              name_handle;
+    post_op_attr_t         name_attributes;
+    struct entryplus3_s*   nextentry;
+} entryplus3_t;
+
+void entryplus3_init(entryplus3_t* e);
+void entryplus3_destroy(entryplus3_t* e);
+void entryplus3_set_name(entryplus3_t* e, const char* name);
+
+typedef struct {
+    entryplus3_t* entries;
+    int           eof;
+} dirlistplus3_t;
+
+void dirlistplus3_init(dirlistplus3_t* dl);
+void dirlistplus3_destroy(dirlistplus3_t* dl);
+
+typedef struct {
+    nfs_fh3_t dir;
+    uint64_t  cookie;
+    uint64_t  cookieverf;
+    uint32_t  dircount;
+    uint32_t  maxcount;
+} READDIRPLUS3args_t;
+
+typedef struct {
+    post_op_attr_t dir_attributes;
+    uint64_t       cookieverf;
+    dirlistplus3_t reply;
+} READDIRPLUS3resok_t;
+
+void readdirplus3resok_init(READDIRPLUS3resok_t* res);
+void readdirplus3resok_destroy(READDIRPLUS3resok_t* res);
+
+typedef struct {
+    nfsstat3_t          status;
+    int                 has_resok;
+    READDIRPLUS3resok_t resok;
+} READDIRPLUS3res_t;
+
+void readdirplus3res_init(READDIRPLUS3res_t* res);
+void readdirplus3res_destroy(READDIRPLUS3res_t* res);
 
 /* FSSTAT */
 typedef struct {
@@ -423,6 +598,31 @@ typedef struct {
     int            has_resok;
     FSINFO3resok_t resok;
 } FSINFO3res_t;
+
+/* PATHCONF */
+typedef struct {
+    nfs_fh3_t object;
+} PATHCONF3args_t;
+
+typedef struct {
+    int32_t linkmax;
+    int32_t name_max;
+    int     no_trunc;
+    int     chown_restricted;
+    int     case_insensitive;
+    int     case_preserving;
+} pathconf3_resok_info_t;
+
+typedef struct {
+    post_op_attr_t          obj_attributes;
+    pathconf3_resok_info_t  info;
+} PATHCONF3resok_t;
+
+typedef struct {
+    nfsstat3_t       status;
+    int              has_resok;
+    PATHCONF3resok_t resok;
+} PATHCONF3res_t;
 
 /* COMMIT */
 typedef struct {
