@@ -38,6 +38,25 @@ bool RpcClient::is_connected() const {
     return transport_.is_connected();
 }
 
+std::pair<RpcStatus, std::vector<uint8_t>> RpcClient::raw_call(
+    const std::vector<uint8_t>& raw_msg,
+    int timeout_ms) {
+    if (!transport_.is_connected()) {
+        return {RpcStatus::CONN_ERR, {}};
+    }
+
+    if (!transport_.send(raw_msg, timeout_ms)) {
+        return {RpcStatus::SEND_ERR, {}};
+    }
+
+    std::vector<uint8_t> reply_data;
+    if (!transport_.recv(reply_data, timeout_ms)) {
+        return {RpcStatus::RECV_ERR, {}};
+    }
+
+    return {RpcStatus::OK, std::move(reply_data)};
+}
+
 std::pair<RpcStatus, std::vector<uint8_t>> RpcClient::call(
     uint32_t prog, uint32_t vers, uint32_t proc,
     const std::vector<uint8_t>& xdr_args,
@@ -120,6 +139,38 @@ int nfstest_rpc_call(nfstest_rpc_client_t* client,
         args.assign(args_data, args_data + args_len);
     }
     auto [status, resp] = client->client.call(prog, vers, proc, args, timeout_ms);
+
+    if (status != nfstest::rpc::RpcStatus::OK) {
+        *resp_data = nullptr;
+        *resp_len = 0;
+        return map_status(status);
+    }
+
+    *resp_len = resp.size();
+    if (resp.empty()) {
+        *resp_data = nullptr;
+        return NFSTEST_RPC_OK;
+    }
+
+    *resp_data = static_cast<uint8_t*>(std::malloc(resp.size()));
+    if (!*resp_data) {
+        *resp_len = 0;
+        return NFSTEST_RPC_CONN_ERR;
+    }
+    std::memcpy(*resp_data, resp.data(), resp.size());
+    return NFSTEST_RPC_OK;
+}
+
+int nfstest_rpc_raw_call(nfstest_rpc_client_t* client,
+                         const uint8_t* call_data, size_t call_len,
+                         uint8_t** resp_data, size_t* resp_len,
+                         int timeout_ms) {
+    if (!client || !resp_data || !resp_len || (call_len > 0 && !call_data)) {
+        return NFSTEST_RPC_CONN_ERR;
+    }
+
+    std::vector<uint8_t> args(call_data, call_data + call_len);
+    auto [status, resp] = client->client.raw_call(args, timeout_ms);
 
     if (status != nfstest::rpc::RpcStatus::OK) {
         *resp_data = nullptr;

@@ -30,6 +30,10 @@ add_executable(test_rpc_real_c test_rpc_real.c nfs3_server_test.c)
 target_link_libraries(test_rpc_real_c PRIVATE nfs3_test_core_c)
 target_include_directories(test_rpc_real_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_executable(test_rpc_fuzz_c test_rpc_fuzz.c nfs3_server_test.c)
+target_link_libraries(test_rpc_fuzz_c PRIVATE nfs3_test_core_c)
+target_include_directories(test_rpc_fuzz_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
 set(NFS3_SERVER_TEST_LABELS "integration;server;nfs3")
 
 add_test(NAME test_suite_c COMMAND test_suite_c)
@@ -40,6 +44,7 @@ add_test(NAME test_nfs3_readwrite_c COMMAND test_nfs3_readwrite_c)
 add_test(NAME test_nfs3_create_c COMMAND test_nfs3_create_c)
 add_test(NAME test_nfs3_readdir_c COMMAND test_nfs3_readdir_c)
 add_test(NAME test_rpc_real_c COMMAND test_rpc_real_c)
+add_test(NAME test_rpc_fuzz_c COMMAND test_rpc_fuzz_c)
 
 set_tests_properties(
     test_suite_c
@@ -54,5 +59,6 @@ set_tests_properties(
     test_nfs3_create_c
     test_nfs3_readdir_c
     test_rpc_real_c
+    test_rpc_fuzz_c
     PROPERTIES LABELS "${NFS3_SERVER_TEST_LABELS}"
 )

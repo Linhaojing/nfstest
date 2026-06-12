@@ -32,6 +32,11 @@ int nfstest_rpc_call(nfstest_rpc_client_t* client,
                      uint8_t** resp_data, size_t* resp_len,
                      int timeout_ms);
 
+int nfstest_rpc_raw_call(nfstest_rpc_client_t* client,
+                         const uint8_t* call_data, size_t call_len,
+                         uint8_t** resp_data, size_t* resp_len,
+                         int timeout_ms);
+
 #ifdef __cplusplus
 }
 #endif
