@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(shared_rpc LANGUAGES CXX)
+project(simple_rpc LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,13 +11,13 @@ else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -DNDEBUG")
 endif()
 
-add_library(shared_rpc STATIC
+add_library(simple_rpc STATIC
     src/rpc_transport.cpp
     src/rpc_client.cpp
 )
 
-target_include_directories(shared_rpc PUBLIC
+target_include_directories(simple_rpc PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_compile_features(shared_rpc PUBLIC cxx_std_17)
+target_compile_features(simple_rpc PUBLIC cxx_std_17)

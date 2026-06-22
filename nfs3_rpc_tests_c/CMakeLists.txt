@@ -18,7 +18,7 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-add_subdirectory(../shared_rpc ${CMAKE_BINARY_DIR}/shared_rpc_build)
+add_subdirectory(../simple_rpc ${CMAKE_BINARY_DIR}/simple_rpc_build)
 
 add_library(nfs3_test_core_c STATIC
     src/xdr_codec.c
@@ -28,10 +28,10 @@ add_library(nfs3_test_core_c STATIC
 
 target_include_directories(nfs3_test_core_c PUBLIC
     ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/../shared_rpc/include
+    ${CMAKE_SOURCE_DIR}/../simple_rpc/include
 )
 
-target_link_libraries(nfs3_test_core_c PUBLIC shared_rpc)
+target_link_libraries(nfs3_test_core_c PUBLIC simple_rpc)
 
 target_compile_features(nfs3_test_core_c PUBLIC c_std_11)
 
