@@ -83,6 +83,12 @@ set_tests_properties(
     PROPERTIES LABELS "unit;xdr"
 )
 
+add_executable(test_lockd_c test_lockd_c.c nfs3_server_test.c)
+target_link_libraries(test_lockd_c PRIVATE nfs3_test_core_c)
+target_include_directories(test_lockd_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_test(NAME test_lockd_c COMMAND test_lockd_c)
+
 set_tests_properties(
     test_nfs3_getattr_c
     test_nfs3_lookup_c
@@ -96,5 +102,6 @@ set_tests_properties(
     test_nfs3_symlink_special_c
     test_rpc_real_c
     test_rpc_robustness_c
+    test_lockd_c
     PROPERTIES LABELS "${NFS3_SERVER_TEST_LABELS}"
 )
