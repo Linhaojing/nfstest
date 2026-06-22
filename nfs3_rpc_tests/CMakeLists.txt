@@ -49,7 +49,7 @@ if(TIRPC_FOUND AND NOT USE_BUILTIN_RPC)
     add_definitions(-DHAVE_LIBTIRPC=1)
     message(STATUS "libtirpc found, RPC support enabled")
 else()
-    add_subdirectory(../shared_rpc ${CMAKE_BINARY_DIR}/shared_rpc_build)
+    add_subdirectory(../simple_rpc ${CMAKE_BINARY_DIR}/simple_rpc_build)
 
     target_sources(nfs3_test_core PRIVATE
         src/rpc_endpoint.cpp
@@ -59,15 +59,15 @@ else()
     )
 
     target_include_directories(nfs3_test_core PUBLIC
-        ${CMAKE_SOURCE_DIR}/../shared_rpc/include
+        ${CMAKE_SOURCE_DIR}/../simple_rpc/include
     )
 
-    target_link_libraries(nfs3_test_core PUBLIC shared_rpc)
+    target_link_libraries(nfs3_test_core PUBLIC simple_rpc)
 
     if(TIRPC_FOUND AND USE_BUILTIN_RPC)
         message(STATUS "libtirpc available but forced using built-in RPC")
     elseif(NOT TIRPC_FOUND)
-        message(STATUS "libtirpc not found, using built-in RPC (shared_rpc)")
+        message(STATUS "libtirpc not found, using built-in RPC (simple_rpc)")
     endif()
 endif()
 
