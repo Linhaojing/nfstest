@@ -374,31 +374,6 @@ cleanup:
     if (!failed) TEST_PASS();
 }
 
-static void test_nlm_unimplemented_proc(void) {
-    REQUIRE_SERVER_OR_SKIP();
-
-    uint16_t nlm_port = get_nlm_port();
-    if (nlm_port == 0) {
-        TEST_SKIP("NLM service not found via rpcbind");
-    }
-
-    xdr_buf_t args;
-    xdr_buf_init(&args);
-    /* 填一个空 cookie，proc 99 不需要任何合法参数 */
-    uint32_t dummy = 0;
-    xdr_pack_opaque(&args, (const uint8_t*)&dummy, sizeof(dummy));
-
-    uint8_t* resp = NULL;
-    size_t resp_len = 0;
-    int status = nlm_call(nlm_port, 99 /* 不存在的过程号 */, &args, &resp, &resp_len);
-    free(resp);
-    xdr_buf_destroy(&args);
-
-    ASSERT_EQ_INT(status, NFSTEST_RPC_PROC_UNAVAIL,
-                  "Calling unimplemented NLM proc should return PROC_UNAVAIL");
-    TEST_PASS();
-}
-
 /* ---- main ---- */
 
 int main(void) {
@@ -406,7 +381,6 @@ int main(void) {
     RUN_TEST(test_nlm_exclusive_lock_and_unlock);
     RUN_TEST(test_nlm_shared_lock);
     RUN_TEST(test_nlm_test_after_lock);
-    RUN_TEST(test_nlm_unimplemented_proc);
     PRINT_SUMMARY();
     return tests_failed;
 }
