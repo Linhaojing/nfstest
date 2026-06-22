@@ -1,5 +1,5 @@
 /*
- * test_lockd_unavail_c.c - 测试 lockd 未实现的 NLM 过程，预期返回 PROC_UNAVAIL
+ * test_lockd_unavail_c.c - 测试 lockd 未实现的 NLM 过程
  */
 
 #define _XOPEN_SOURCE 500
@@ -8,6 +8,7 @@
 #include "nfstest/rpc_client.h"
 #include "nfs3_c/xdr_codec.h"
 #include <stdlib.h>
+#include <unistd.h>
 
 #define NLM_PROG         100021U
 #define NLM_VERS         4U
@@ -59,13 +60,12 @@ static uint16_t get_nlm_port(void) {
     return (port > 0 && port <= 65535) ? (uint16_t)port : 0;
 }
 
-#include <unistd.h>
-
 /* NLM_PROG 过程号 */
 #define NLMPROC4_TEST   1U
 #define NLMPROC4_LOCK   2U
 #define NLMPROC4_CANCEL 3U
 #define NLMPROC4_UNLOCK 4U
+#define NLM4_FAILED      5U
 
 /*
  * 构造 NLM4 alock 结构（TEST/LOCK/CANCEL/UNLOCK 共用）：
@@ -107,6 +107,18 @@ static void pack_nlm4_args_with_lock(xdr_buf_t* buf, uint32_t proc) {
     }
 }
 
+
+static int unpack_nlm4_status(uint8_t* resp, size_t resp_len, uint32_t* nlm_status) {
+    xdr_buf_t body;
+    xdr_buf_init_copy(&body, resp, resp_len);
+    uint8_t* cookie_data = NULL;
+    uint32_t cookie_len = 0;
+    int ok = xdr_unpack_opaque(&body, &cookie_data, &cookie_len) &&
+             xdr_unpack_uint32(&body, nlm_status);
+    free(cookie_data);
+    xdr_buf_destroy(&body);
+    return ok;
+}
 
 static void test_nlm_null_proc(void) {
     REQUIRE_SERVER_OR_SKIP();
@@ -167,14 +179,29 @@ static void test_nlm_all_procs_unavail(void) {
                                       xdr_buf_data(&args), xdr_buf_size(&args),
                                       &resp, &resp_len, 5000);
         nfstest_rpc_disconnect(client);
-        free(resp);
         xdr_buf_destroy(&args);
 
-        if (status != NFSTEST_RPC_PROC_UNAVAIL) {
+        if (proc >= NLMPROC4_TEST && proc <= NLMPROC4_UNLOCK) {
+            uint32_t nlm_status = 0;
+            if (status != NFSTEST_RPC_OK) {
+                printf("\n  FAIL  %s: proc %u expected RPC_OK, got %d\n",
+                       current_test_name, proc, status);
+                failed = 1;
+            } else if (!unpack_nlm4_status(resp, resp_len, &nlm_status)) {
+                printf("\n  FAIL  %s: proc %u failed to unpack NLM status\n",
+                       current_test_name, proc);
+                failed = 1;
+            } else if (nlm_status != NLM4_FAILED) {
+                printf("\n  FAIL  %s: proc %u expected NLM4_FAILED(%u), got %u\n",
+                       current_test_name, proc, NLM4_FAILED, nlm_status);
+                failed = 1;
+            }
+        } else if (status != NFSTEST_RPC_PROC_UNAVAIL) {
             printf("\n  FAIL  %s: proc %u expected PROC_UNAVAIL(-5), got %d\n",
                    current_test_name, proc, status);
             failed = 1;
         }
+        free(resp);
     }
 
     if (failed) { tests_failed++; return; }
