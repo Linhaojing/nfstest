@@ -65,7 +65,7 @@ static uint16_t get_nlm_port(void) {
 #define NLMPROC4_LOCK   2U
 #define NLMPROC4_CANCEL 3U
 #define NLMPROC4_UNLOCK 4U
-#define NLM4_FAILED      5U
+#define NLM4_FAILED      9U
 
 /*
  * 构造 NLM4 alock 结构（TEST/LOCK/CANCEL/UNLOCK 共用）：
@@ -149,8 +149,8 @@ static void test_nlm_null_proc(void) {
     TEST_PASS();
 }
 
-/* NLM4 定义的过程号范围为 1-23，该服务器除 NULL(0) 外均不支持 */
-static void test_nlm_all_procs_unavail(void) {
+/* 该服务器实现了 TEST/LOCK/CANCEL/UNLOCK 入口，但返回 NLM4_FAILED */
+static void test_nlm_core_procs_failed(void) {
     REQUIRE_SERVER_OR_SKIP();
 
     uint16_t nlm_port = get_nlm_port();
@@ -161,7 +161,7 @@ static void test_nlm_all_procs_unavail(void) {
     const char* host = getenv("NFS_TEST_SERVER");
     int failed = 0;
 
-    for (uint32_t proc = 1; proc <= 23; proc++) {
+    for (uint32_t proc = NLMPROC4_TEST; proc <= NLMPROC4_UNLOCK; proc++) {
         nfstest_rpc_client_t* client = nfstest_rpc_connect(host, nlm_port, 5000);
         if (!client) {
             printf("\n  FAIL  %s: cannot connect for proc %u\n", current_test_name, proc);
@@ -169,10 +169,7 @@ static void test_nlm_all_procs_unavail(void) {
         }
         xdr_buf_t args;
         xdr_buf_init(&args);
-        /* proc 1-4 需要构造合法的 alock 参数，其余发空参数 */
-        if (proc >= NLMPROC4_TEST && proc <= NLMPROC4_UNLOCK) {
-            pack_nlm4_args_with_lock(&args, proc);
-        }
+        pack_nlm4_args_with_lock(&args, proc);
         uint8_t* resp = NULL;
         size_t resp_len = 0;
         int status = nfstest_rpc_call(client, NLM_PROG, NLM_VERS, proc,
@@ -181,24 +178,18 @@ static void test_nlm_all_procs_unavail(void) {
         nfstest_rpc_disconnect(client);
         xdr_buf_destroy(&args);
 
-        if (proc >= NLMPROC4_TEST && proc <= NLMPROC4_UNLOCK) {
-            uint32_t nlm_status = 0;
-            if (status != NFSTEST_RPC_OK) {
-                printf("\n  FAIL  %s: proc %u expected RPC_OK, got %d\n",
-                       current_test_name, proc, status);
-                failed = 1;
-            } else if (!unpack_nlm4_status(resp, resp_len, &nlm_status)) {
-                printf("\n  FAIL  %s: proc %u failed to unpack NLM status\n",
-                       current_test_name, proc);
-                failed = 1;
-            } else if (nlm_status != NLM4_FAILED) {
-                printf("\n  FAIL  %s: proc %u expected NLM4_FAILED(%u), got %u\n",
-                       current_test_name, proc, NLM4_FAILED, nlm_status);
-                failed = 1;
-            }
-        } else if (status != NFSTEST_RPC_PROC_UNAVAIL) {
-            printf("\n  FAIL  %s: proc %u expected PROC_UNAVAIL(-5), got %d\n",
+        uint32_t nlm_status = 0;
+        if (status != NFSTEST_RPC_OK) {
+            printf("\n  FAIL  %s: proc %u expected RPC_OK, got %d\n",
                    current_test_name, proc, status);
+            failed = 1;
+        } else if (!unpack_nlm4_status(resp, resp_len, &nlm_status)) {
+            printf("\n  FAIL  %s: proc %u failed to unpack NLM status\n",
+                   current_test_name, proc);
+            failed = 1;
+        } else if (nlm_status != NLM4_FAILED) {
+            printf("\n  FAIL  %s: proc %u expected NLM4_FAILED(%u), got %u\n",
+                   current_test_name, proc, NLM4_FAILED, nlm_status);
             failed = 1;
         }
         free(resp);
@@ -208,10 +199,51 @@ static void test_nlm_all_procs_unavail(void) {
     TEST_PASS();
 }
 
+/* 其余 NLM4 过程号不支持，RPC 层返回 PROC_UNAVAIL */
+static void test_nlm_remaining_procs_unavail(void) {
+    REQUIRE_SERVER_OR_SKIP();
+
+    uint16_t nlm_port = get_nlm_port();
+    if (nlm_port == 0) {
+        TEST_SKIP("NLM service not found via rpcbind");
+    }
+
+    const char* host = getenv("NFS_TEST_SERVER");
+    int failed = 0;
+
+    for (uint32_t proc = 5; proc <= 23; proc++) {
+        nfstest_rpc_client_t* client = nfstest_rpc_connect(host, nlm_port, 5000);
+        if (!client) {
+            printf("\n  FAIL  %s: cannot connect for proc %u\n", current_test_name, proc);
+            tests_failed++; return;
+        }
+        xdr_buf_t args;
+        xdr_buf_init(&args);
+        uint8_t* resp = NULL;
+        size_t resp_len = 0;
+        int status = nfstest_rpc_call(client, NLM_PROG, NLM_VERS, proc,
+                                      xdr_buf_data(&args), xdr_buf_size(&args),
+                                      &resp, &resp_len, 5000);
+        nfstest_rpc_disconnect(client);
+        free(resp);
+        xdr_buf_destroy(&args);
+
+        if (status != NFSTEST_RPC_PROC_UNAVAIL) {
+            printf("\n  FAIL  %s: proc %u expected PROC_UNAVAIL(-5), got %d\n",
+                   current_test_name, proc, status);
+            failed = 1;
+        }
+    }
+
+    if (failed) { tests_failed++; return; }
+    TEST_PASS();
+}
+
 int main(void) {
     printf("=== NFS lockd PROC_UNAVAIL Test (C) ===\n\n");
     RUN_TEST(test_nlm_null_proc);
-    RUN_TEST(test_nlm_all_procs_unavail);
+    RUN_TEST(test_nlm_core_procs_failed);
+    RUN_TEST(test_nlm_remaining_procs_unavail);
     PRINT_SUMMARY();
     return tests_failed;
 }
